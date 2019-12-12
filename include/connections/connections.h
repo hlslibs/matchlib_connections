@@ -2673,6 +2673,7 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     msg(sc_gen_unique_name("out_msg"))
 #ifdef CONNECTIONS_SIM_ONLY
     , driver(0)
+    , log_stream(0)
 #endif
     {}
   
@@ -2682,6 +2683,7 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
 #ifdef CONNECTIONS_SIM_ONLY
     , marker(ccs_concat(name, "out_port_marker"), width, &(this->val), &(this->rdy), &msg)
     , driver(0)
+    , log_stream(0)
 #endif
     {}
 
@@ -2815,6 +2817,11 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
     msg.write(bits);
+
+#ifdef CONNECTIONS_SIM_ONLY
+    if (log_stream)
+      *log_stream << std::dec << log_number << " | " << std::hex <<  m << " | " << sc_time_stamp() << "\n";
+#endif    
   }
 
   void invalidate_msg() {
@@ -2832,6 +2839,15 @@ public:
   void set_trace(sc_trace_file* trace_file_ptr, std::string full_name)
   {
     sc_trace(trace_file_ptr, traced_msg, full_name);
+  }
+
+  std::ofstream* log_stream;
+  int log_number;
+
+  void set_log(int num, std::ofstream* fp)
+  {
+    log_stream = fp;
+    log_number = num;
   }
 #endif
 };  
@@ -3888,6 +3904,7 @@ class Combinational <Message, SYN_PORT> : public Combinational_Ports_abs<Message
 class sc_trace_marker {
 public:
   virtual void set_trace(sc_trace_file* trace_file_ptr) = 0;
+  virtual bool set_log(std::ofstream* os, int& log_num, std::string& path_name) = 0;
 };
 #endif
 
@@ -4087,11 +4104,25 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
       }
     }
 
+    bool set_log(std::ofstream* os, int& log_num, std::string& path_name)
+    {
+      if (!parent.driver)
+        return false;
+
+      OutBlocking<Message, MARSHALL_PORT>* driver = parent.driver;
+      while (driver->driver)
+          driver = driver->driver;
+
+      path_name = parent.out_msg.name();
+      driver->set_log(++log_num, os);
+      return true;
+    }
+
     } dummyPortManager;
 #endif
 };  
 
- 
+
 template <typename Message>
 class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<Message, DIRECT_PORT> {
 #ifdef CONNECTIONS_SIM_ONLY
