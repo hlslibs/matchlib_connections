@@ -1,11 +1,9 @@
-Connections
+Matchlib Connections
 ========
-Connections is a SystemC library implementing latency-insensitive channels for use by
-high-level synthesis tools.
+Matchlib Connections is a SystemC library implementing latency-insensitive channels for use by
+High-Level synthesis tools.
 
-Doxygen-generated documentation can be found [here](https://NVlabs.github.io/matchlib/).
-Additional documentation on the Connections
-latency-insensitive channel implementation can be found in the [Connections Guide](doc/connections-guide.pdf).
+Documentation on the Connections latency-insensitive channel implementation can be found in the [Connections Guide](doc/connections-guide.pdf).
 
 Connections has been used as a component of the [MatchLib](https://github.com/NVlabs/matchlib) hardware component library.
 For more documentation about compiling and running Connections components, see the MatchLib documentation.
