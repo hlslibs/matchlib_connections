@@ -1,6 +1,6 @@
-Matchlib Connections
+MatchLib Connections
 ========
-Matchlib Connections is a SystemC library implementing latency-insensitive channels for use by
+MatchLib Connections is a SystemC library implementing latency-insensitive channels for use by
 High-Level synthesis tools.
 
 Documentation on the Connections latency-insensitive channel implementation can be found in the [Connections Guide](doc/connections-guide.pdf).
