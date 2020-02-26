@@ -411,7 +411,6 @@ SpecialWrapperIfc(sc_out);
 SpecialWrapperIfc(sc_signal);
 
 #ifdef HLS_CATAPULT
-#include <ac_int.h>
 SpecialWrapper2(ac_int);
 SpecialWrapper3(ac_fixed);
 

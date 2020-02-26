@@ -48,30 +48,30 @@
 #include <ac_assert.h>
 
   #ifndef CONNECTIONS_ASSERT_MSG
-#define CONNECTIONS_ASSERT_MSG(X,MSG) \
-     if (!(X)) { \
-       CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);  \
-     }\
-     assert(X);
+    #define CONNECTIONS_ASSERT_MSG(X,MSG) \
+    if (!(X)) { \
+      CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);  \
+    }\
+    assert(X);
   #endif // ifndef CONNECTIONS_ASSERT_MSG
 
-#else // ifdef HLS_CATAPULT
+#else // HLS_CATAPULT
 
   #ifndef __SYNTHESIS__
     #ifndef CONNECTIONS_ASSERT_MSG
-    #define CONNECTIONS_ASSERT_MSG(X,MSG)  \
-     if (!(X)) { \
-       CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);  \
-     } \
-     sc_assert(X);
+      #define CONNECTIONS_ASSERT_MSG(X,MSG)  \
+      if (!(X)) { \
+        CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);  \
+      } \
+      sc_assert(X);
     #endif // ifndef CONNECTIONS_ASSERT_MSG
   #else
     #ifndef CONNECTIONS_ASSERT_MSG
-    #define CONNECTIONS_ASSERT_MSG(X,MSG) ((void)0);
+      #define CONNECTIONS_ASSERT_MSG(X,MSG) ((void)0);
     #endif // ifndef CONNECTIONS_ASSERT_MSG
   #endif
 
-#endif // ifdef HLS_CATAPULT
+#endif // HLS_CATAPULT
 
 
 /**
@@ -94,14 +94,14 @@
  */
 #ifndef CONNECTIONS_SIM_ONLY_ASSERT_MSG
 #ifndef __SYNTHESIS__
-#define CONNECTIONS_SIM_ONLY_ASSERT_MSG(X,MSG)	\
-  if (!(X)) {						       \
-    CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);     \
-  }							       \
+#define CONNECTIONS_SIM_ONLY_ASSERT_MSG(X,MSG) \
+  if (!(X)) { \
+    CONNECTIONS_COUT("Assertion Failed. " << MSG << endl); \
+  } \
   sc_assert(X);
 #else
 #define CONNECTIONS_SIM_ONLY_ASSERT_MSG(X,MSG) ((void)0);
-#endif // ifdef HLS_CATAPULT
+#endif // ifdef __SYNTHESIS__
 #endif // ifndef CONNECTIONS_SIM_ONLY_ASSERT_MSG
 
 

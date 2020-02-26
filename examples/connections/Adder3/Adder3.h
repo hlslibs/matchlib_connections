@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef __ADDER2_H__
-#define __ADDER2_H__
+#ifndef __ADDER3_H__
+#define __ADDER3_H__
 
 #include <systemc.h>
 #include <connections/connections.h>
 
-// adder2: inputs a and b; output sum=a+b_val?b:0
+// adder3: inputs a and b; output sum=a+b_val?b:0
 // forward progress even if b is not present, use 0
 
-SC_MODULE(Adder2)
+SC_MODULE(Adder3)
 {
     public:
         sc_in_clk     clk;
@@ -35,8 +35,8 @@ SC_MODULE(Adder2)
 
         Connections::Out<Data> sum_out;
 
-        SC_HAS_PROCESS(Adder2);
-        Adder2(sc_module_name name_) : sc_module(name_),
+        SC_HAS_PROCESS(Adder3);
+        Adder3(sc_module_name name_) : sc_module(name_),
         a_in("a_in"), b_in("b_in"), sum_out("sum_out")
         {
             SC_THREAD (run); 

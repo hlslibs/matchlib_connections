@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "Adder2.h"
+#include "Adder3.h"
 #include <systemc.h>
 #include <mc_scverify.h>
 
@@ -33,7 +33,7 @@ using namespace::std;
 typedef deque<int> Fifo;
 
 SC_MODULE (Source) {
-    Connections::Out<Adder2::Data> x_out;
+    Connections::Out<Adder3::Data> x_out;
 
     sc_in <bool> clk;
     sc_in <bool> rst;
@@ -48,15 +48,15 @@ SC_MODULE (Source) {
         pacer.reset();
         fifo.clear();
 
-        Adder2::Data x = start_val;
+        Adder3::Data x = start_val;
 
-	// Wait for initial reset.
-	wait(20.0, SC_NS);
-	
+        // Wait for initial reset.
+        wait(20.0, SC_NS);
+
         wait();
-	
+
         while(1) {
-	    //cout << "@" << sc_time_stamp() << "\t" << name() << " sending X=" << x << endl ;
+            //cout << "@" << sc_time_stamp() << "\t" << name() << " sending X=" << x << endl ;
             x_out.Push(x);            
             //cout << "@" << sc_time_stamp() << "\t" << name() << " DONE" << endl ;
             fifo.push_back(x);
@@ -64,7 +64,7 @@ SC_MODULE (Source) {
 
             wait();
             while (pacer.tic()) { 
-	        //cout << "@" << sc_time_stamp() << "\t" << name() << " STALL" << endl ;
+                //cout << "@" << sc_time_stamp() << "\t" << name() << " STALL" << endl ;
                 wait(); 
             }
         }
@@ -81,12 +81,12 @@ SC_MODULE (Source) {
     {
         SC_THREAD(run);
         sensitive << clk.pos();
-	      async_reset_signal_is(rst,false);
+        async_reset_signal_is(rst,false);
     }
 };
 
 SC_MODULE (Dest) {
-    Connections::In<Adder2::Data> sum_in;
+    Connections::In<Adder3::Data> sum_in;
 
     sc_in <bool> clk;
     sc_in <bool> rst;
@@ -101,22 +101,22 @@ SC_MODULE (Dest) {
     void run() {
         sum_in.Reset();
         pacer.reset();
-        Adder2::Data sum;
+        Adder3::Data sum;
 
-	// Wait for initial reset.
-	wait(20.0, SC_NS);
+        // Wait for initial reset.
+        wait(20.0, SC_NS);
 
         wait();
 
         while(1) {
-	    //cout << "@" << sc_time_stamp() << "\t\t\t\t\t\t Dest checking for result" << endl ;
+            //cout << "@" << sc_time_stamp() << "\t\t\t\t\t\t Dest checking for result" << endl ;
             sum = sum_in.Pop();  
             //cout << "@" << sc_time_stamp() << "\t\t\t\t\t\t       GOT " << sum << endl;
-	    count++;
+            count++;
 
-	    while(fifo_a.empty() || fifo_b.empty()) {
-	      wait();
-	    }
+            while(fifo_a.empty() || fifo_b.empty()) {
+              wait();
+            }
             
             if (sum == ((fifo_a.front() + fifo_b.front()) & 0xffff)) 
             {
@@ -146,17 +146,17 @@ SC_MODULE (Dest) {
     {
         SC_THREAD(run);
         sensitive << clk.pos();
-	      async_reset_signal_is(rst,false);
+        async_reset_signal_is(rst,false);
     }
 };
 
 
 SC_MODULE (testbench) {
-    CCS_DESIGN(Adder2) adder;
+    CCS_DESIGN(Adder3) adder;
     Source srca,srcb;
     Dest dest;
 
-    Connections::Combinational<Adder2::Data> a,b,sum;
+    Connections::Combinational<Adder3::Data> a,b,sum;
     
 
     sc_clock clk;
@@ -213,14 +213,15 @@ SC_MODULE (testbench) {
         //cout << "@" << sc_time_stamp() << " Stop " << endl ;
         sc_stop();
         cout << "Final count = " << count << endl;
-#ifdef _SYNTHESIS_
+#ifdef CCS_SYSC
         unsigned int correct_count = 176; // TODO - why mismatch?
 #else
         unsigned int correct_count = 175;
 #endif
         if(count != correct_count) {
-            cout << "Error: Count does not match expected value (" << correct_count << ")!" << endl;
-            assert(0);
+            std::ostringstream msg;
+            msg << "Error: Count does not match expected value (" << correct_count << ")!";
+            SC_REPORT_ERROR("Testbench", msg.str().c_str()); 
         }
     }
 };
@@ -235,8 +236,13 @@ int sc_main(int argc, char *argv[])
 #endif
     testbench my_testbench("my_testbench");
     Connections::annotate_design(my_testbench);
+    sc_report_handler::set_actions(SC_ERROR, SC_DISPLAY);
     sc_start();
-    cout << "CMODEL PASS" << endl;
-    return 0;
+    int retv = sc_report_handler::get_count(SC_ERROR);
+    if ( retv != 0 ) 
+        cout << "CMODEL FAILED" << endl;
+    else
+        cout << "CMODEL PASS" << endl;
+    return retv;
 };
 

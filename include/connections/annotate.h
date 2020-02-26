@@ -55,66 +55,73 @@ namespace Connections {
 
       // Check if this channel exists in DOM, if not add it.
       if(! v_channels.HasMember(it_name.c_str())) {
-	rapidjson::Value v_name;
-	v_name.SetString(it_name.c_str(), d.GetAllocator());
-	rapidjson::Value v_channel;
-	v_channel.SetObject();
-	v_channels.AddMember(v_name, v_channel, d.GetAllocator());
+        rapidjson::Value v_name;
+        v_name.SetString(it_name.c_str(), d.GetAllocator());
+        rapidjson::Value v_channel;
+        v_channel.SetObject();
+        v_channels.AddMember(v_name, v_channel, d.GetAllocator());
       }
       rapidjson::Value &v_channel = v_channels[it_name.c_str()];
 
       // Check if latency exists, if not add it
       if(! v_channel.HasMember("latency")) {
-	rapidjson::Value v_latency;
-	v_latency.SetInt(0);
-	v_channel.AddMember("latency", v_latency, d.GetAllocator());
+        rapidjson::Value v_latency;
+        v_latency.SetInt(0);
+        v_channel.AddMember("latency", v_latency, d.GetAllocator());
       }
       rapidjson::Value &v_latency = v_channel["latency"];
       
       // Check if capacity exists, if not add it
       if(! v_channel.HasMember("capacity")) {
-	rapidjson::Value v_capacity;
-	v_capacity.SetInt(0);
-	v_channel.AddMember("capacity", v_capacity, d.GetAllocator());
+        rapidjson::Value v_capacity;
+        v_capacity.SetInt(0);
+        v_channel.AddMember("capacity", v_capacity, d.GetAllocator());
       }
       rapidjson::Value &v_capacity = v_channel["capacity"];
 
       // Get the src_name and dest_name after subtracting off root
       std::string src_name = (*it)->src_name();
       {
-	if(src_name.substr(src_name.length() - 4,4) == "_val") { src_name.erase(src_name.length() - 4,4); }
-	std::size_t pos = src_name.find(root_name);
-	if(pos != std::string::npos) { src_name.erase(pos, root_name.length()); }
+        if(src_name.substr(src_name.length() - 4,4) == "_val") { src_name.erase(src_name.length() - 4,4); }
+        std::size_t pos = src_name.find(root_name);
+        if(pos != std::string::npos) { src_name.erase(pos, root_name.length()); }
+#ifdef MTI_SYSTEMC
+        for (size_t i=0; i<src_name.length(); i++) if (src_name[i]=='/') src_name[i]='.';
+#endif
       }
       
       std::string dest_name = (*it)->dest_name();
       {
-	if(dest_name.substr(dest_name.length() - 4,4) == "_val") { dest_name.erase(dest_name.length() - 4,4); }
-	std::size_t pos = dest_name.find(root_name);
-	if(pos != std::string::npos) { dest_name.erase(pos, root_name.length()); }
+        if(dest_name.substr(dest_name.length() - 4,4) == "_val") { dest_name.erase(dest_name.length() - 4,4); }
+        std::size_t pos = dest_name.find(root_name);
+        if(pos != std::string::npos) { dest_name.erase(pos, root_name.length()); }
+#ifdef MTI_SYSTEMC
+        for (size_t i=0; i<dest_name.length(); i++) if (dest_name[i]=='/') dest_name[i]='.';
+#endif
       }
       
       // Add the net driver/receiver, always an output never an input.
       if(v_channel.HasMember("src_name")) {
-	if(strcmp(v_channel["src_name"].GetString(),src_name.c_str()) != 0) {
-	  cout << "Error: During annotation src_name in input doesn't match real src_name (" << v_channel["src_name"].GetString() << " != " << src_name.c_str() << ")" << endl;
-	  assert(0);
-	}
+        if(strcmp(v_channel["src_name"].GetString(),src_name.c_str()) != 0) {
+          cout << "Error: During annotation src_name in input doesn't match real src_name (" << v_channel["src_name"].GetString() << " != " << src_name.c_str() << ")" << endl;
+          return;
+          //assert(0);
+        }
       } else {
-	rapidjson::Value v_src_name;
-	v_src_name.SetString(src_name.c_str(), d.GetAllocator());
-	v_channel.AddMember("src_name", v_src_name, d.GetAllocator());
+        rapidjson::Value v_src_name;
+        v_src_name.SetString(src_name.c_str(), d.GetAllocator());
+        v_channel.AddMember("src_name", v_src_name, d.GetAllocator());
       }
       
       if(v_channel.HasMember("dest_name")) {
-	if(strcmp(v_channel["dest_name"].GetString(),dest_name.c_str()) != 0) {
-	  cout << "Error: During annotation dest_name in input doesn't match real dest_name (" << v_channel["dest_name"].GetString() << " != " << dest_name.c_str() << ")" << endl;
-	  assert(0);
-	}
+        if(strcmp(v_channel["dest_name"].GetString(),dest_name.c_str()) != 0) {
+          cout << "Error: During annotation dest_name in input doesn't match real dest_name (" << v_channel["dest_name"].GetString() << " != " << dest_name.c_str() << ")" << endl;
+          assert(0);
+        }
       } else {
-	rapidjson::Value v_dest_name;
-	v_dest_name.SetString(dest_name.c_str(), d.GetAllocator());
-	v_channel.AddMember("dest_name", v_dest_name, d.GetAllocator());
+        rapidjson::Value v_dest_name;
+        v_dest_name.SetString(dest_name.c_str(), d.GetAllocator());
+        v_channel.AddMember("dest_name", v_dest_name, d.GetAllocator());
       }
       
       // Annotate based on the value.
@@ -127,7 +134,13 @@ namespace Connections {
   void annotate_design(const sc_object &root, std::string base_name = "", std::string input_dir_path = "", std::string output_dir_path = "") {
     bool explicit_input_dir=false;
     // If empty basename, set it to name() of object...
-    if(base_name.length() == 0) { base_name = root.name(); }
+    if(base_name.length() == 0) { 
+      base_name = root.name();
+#ifdef MTI_SYSTEMC
+      std::size_t pos = base_name.find("sc_main/");
+      if(pos == 0) { base_name.erase(pos,8); }
+#endif
+    }
     
     // Add delim if non-empty base_name
     if(base_name.length() > 0) { base_name += "."; }
@@ -155,15 +168,20 @@ namespace Connections {
       d.ParseStream(isw);
     } else {
       if(explicit_input_dir) {
-	CONNECTIONS_ASSERT_MSG(0, ("Warning: Could not read input json " + input_path).c_str());
+        CONNECTIONS_ASSERT_MSG(0, ("Warning: Could not read input json " + input_path).c_str());
       } else {
-	CONNECTIONS_COUT("Warning: Could not read input json " << input_path.c_str() << endl);
+        CONNECTIONS_COUT("Warning: Could not read input json " << input_path.c_str() << endl);
       }
       d.SetObject();
     }
     
-    std::string root_name = std::string(root.name()) + ".";
-    assert(root_name.length() > 1); // Should be something other than just "."
+    std::string root_name = std::string(root.name());
+    assert(!root_name.empty());
+#ifdef MTI_SYSTEMC
+    root_name += "/";
+#else
+    root_name += ".";
+#endif
 
     __annotate_vector(Connections::get_conManager().tracked_annotate, root_name, d);
     

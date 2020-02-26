@@ -14,16 +14,66 @@
 # limitations under the License.
 #
 
-include ../cmod_Makefile
+CC = g++
+
+ifneq ($(SYSTEMC_HOME),)
+INCDIR += -I$(SYSTEMC_HOME)/include
+LIBDIR += -L$(SYSTEMC_HOME)/lib-linux64
+endif
+
+INCDIR += -I$(MGC_HOME)/shared/include
+LIBDIR += -L$(MGC_HOME)/shared/lib
+
+CFLAGS ?= 
+CFLAGS += -Wall -Wno-unknown-pragmas $(INCDIR) $(LIBDIR)
+
+HLS_CATAPULT ?= 1
+ifeq ($(HLS_CATAPULT),1)
+  CFLAGS += -DHLS_CATAPULT
+endif
+
+LIBS ?=
+LIBS += -lsystemc -lpthread
+
+# SIM_MODE
+# 0 = Synthesis view of Connections port and combinational code. This option can cause failed simulations due to SystemC's timing model.
+# 1 = Cycle accurate view of Connections port and channel code, CONNECTOINS_ACCURATE_SIM. (default)
+# 1 = Faster TLM view of Connections port and channel code, CONNECTIONS_FAST_SIM.
+SIM_MODE ?= 1
+ifeq ($(SIM_MODE),0)
+# No flags are added, intentionally blank.
+endif
+ifeq ($(SIM_MODE),1)
+	USER_FLAGS += -DCONNECTIONS_ACCURATE_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES
+endif
+ifeq ($(SIM_MODE),2)
+	USER_FLAGS += -DCONNECTIONS_FAST_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES
+endif
+
+# RAND_STALL
+# 0 = Random stall of ports and channels disabled (default)
+# 1 = Random stall of ports and channels enabled
+#
+# This feature aids in latency insensitive design verication.
+# Note: Only valid if SIM_MODE = 1 (accurate) or 2 (fast)
+ifeq ($(RAND_STALL),1)
+	USER_FLAGS += -DCONN_RAND_STALL
+	USER_FLAGS += -DCONN_RAND_STALL_PRINT_DEBUG
+endif
+
+.PHONY: Build
+Build: all
+
+clean:
+	rm -rf *.o sim_* dump.vcd
 
 all: sim_adder2
 
-USER_FLAGS += -DCONN_RAND_STALL_PRINT_DEBUG
 run:
 	./sim_adder2
 
 sim_adder2: $(wildcard *.h) $(wildcard *.cpp)
-	$(CC) -o sim_adder2 -I../../include $(CFLAGS) $(USER_FLAGS) $(wildcard *.cpp) $(LIBS)
+	$(CC) -o sim_adder2 $(CFLAGS) $(USER_FLAGS) $(wildcard *.cpp) $(LIBS)
 
 sim_clean:
 	rm -rf *.o sim_*

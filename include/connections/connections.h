@@ -20,16 +20,6 @@
 #ifndef __CONNECTIONS__CONNECTIONS_H__
 #define __CONNECTIONS__CONNECTIONS_H__
 
-#include <systemc.h>
-#include "marshaller.h"
-#include <ccs_p2p.h>
-
-#include "connections_utils.h"
-
-#ifndef __SYNTHESIS__
-#include <iomanip>
-#endif
-
 #if defined(CONNECTIONS_ACCURATE_SIM) && defined(CONNECTIONS_FAST_SIM)
 #error "Both CONNECTIONS_ACCURATE_SIM and CONNECTIONS_FAST_SIM are defined. Define one or the other."
 #endif
@@ -51,6 +41,13 @@
   error "Empty/Peek/Full functions are currently not supported in HLS"
 #else
 #define QUERY_CALL()
+#endif
+
+#include <systemc.h>
+#include "marshaller.h"
+
+#ifndef __SYNTHESIS__
+#include <iomanip>
 #endif
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -240,6 +237,60 @@ SpecialWrapperIfc(Connections::Out);
 
 namespace Connections {
 
+class ResetChecker {
+ protected:
+  bool is_reset;
+#ifndef __SYNTHESIS__
+  const char *name;
+  bool is_val_name;
+#endif
+  
+ public:
+ ResetChecker(const char *name_)
+   : is_reset(false)
+#ifndef __SYNTHESIS__
+    ,name(name_)
+    ,is_val_name(false)
+#endif
+  {}
+
+  void reset() {
+    is_reset = true;
+  }
+  
+  void check() {
+#ifndef __SYNTHESIS__
+    if(!is_reset) {
+      std::string name = this->name;
+      if(is_val_name) {
+        if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
+      } else {
+        // Add in hierarchcy to name
+        name = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + this->name;
+      }
+      SC_REPORT_WARNING("CONNECTIONS-101", ("Port or channel " + name + " wasn't reset! In thread or process '" \
+        + std::string(sc_core::sc_get_current_process_b()->basename()) \
+        + "'.").c_str());
+      is_reset = true;
+    }
+#endif 
+  }
+
+  void set_val_name(const char *name_) {
+#ifndef __SYNTHESIS__
+    name = name_;
+    is_val_name = true;
+#endif
+  }
+};
+
+class SimConnectionsClk;
+SimConnectionsClk& get_sim_clk();
+void set_sim_clk(sc_clock* clk_ptr);
+
+class ConManager;
+ConManager& get_conManager();
+
 #ifdef CONNECTIONS_SIM_ONLY
 
 // Always enable __CONN_RAND_STALL_FEATURE, but stalling itself is
@@ -321,64 +372,6 @@ class SimConnectionsClk : public clk_statics<void>
     }
 };
 
-SimConnectionsClk& get_sim_clk();
-class ConManager;
-ConManager& get_conManager();
-
-#endif
-
-class ResetChecker {
- protected:
-  bool is_reset;
-#ifndef __SYNTHESIS__
-  const char *name;
-  bool is_val_name;
-#endif
-  
- public:
- ResetChecker(const char *name_)
-   : is_reset(false)
-#ifndef __SYNTHESIS__
-    ,name(name_)
-    ,is_val_name(false)
-#endif
-  {}
-
-  void reset() {
-    is_reset = true;
-  }
-  
-  void check() {
-/*
-#ifndef __SYNTHESIS__
-    if(!is_reset) {
-      // FIXME add warning here
-      std::string name = this->name;
-      if(is_val_name) {
-	if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
-      } else {
-	// Add in hierarchcy to name
-	name = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + this->name;
-      }
-      SC_REPORT_ERROR("CONNECTIONS-101", ("Port or channel " + name + " wasn't reset! In thread or process '" \
-				    + std::string(sc_core::sc_get_current_process_b()->basename()) \
-				    + "'.").c_str());
-      is_reset = true;
-    }
-#endif // ifndef __SYNTHESIS__
-*/
-  }
-
-  void set_val_name(const char *name_) {
-#ifndef __SYNTHESIS__
-    name = name_;
-    is_val_name = true;
-#endif
-  }
-};
- 
-
-#ifdef CONNECTIONS_SIM_ONLY
 // this is an abstract class for both blocking connections
 // it is used to allow a containter of pointers to any blocking connection
 class Blocking_abs {
@@ -469,11 +462,24 @@ struct ConManager_statics
 
 inline void set_sim_clk(sc_clock* clk_ptr)
 {
-#ifdef CONNECTIONS_SIM_ONLY
   ConManager_statics<void>::sim_clk.clk_ptr = clk_ptr;
-#endif
 }
 
+template <class Dummy>
+SimConnectionsClk ConManager_statics<Dummy>::sim_clk;
+template <class Dummy>
+ConManager ConManager_statics<Dummy>::conManager;
+
+inline SimConnectionsClk& get_sim_clk()
+{
+  CONNECTIONS_ASSERT_MSG(ConManager_statics<void>::sim_clk.clk_ptr, "You must call Connections::set_sim_clk(&clk) before sc_start()");
+  return ConManager_statics<void>::sim_clk;
+}
+
+inline ConManager& get_conManager()
+{
+  return ConManager_statics<void>::conManager;
+}
 
 #ifdef __CONN_RAND_STALL_FEATURE
 
@@ -493,24 +499,6 @@ template <class Dummy>
 bool ConManager_statics<Dummy>::rand_stall_print_debug_enable = false;
 #endif // ifdef CONN_RAND_STALL_PRINT_DEBUG
 
-#endif // ifdef __CONN_RAND_STALL_FEATURE
-  
-template <class Dummy>
-SimConnectionsClk ConManager_statics<Dummy>::sim_clk;
-template <class Dummy>
-ConManager ConManager_statics<Dummy>::conManager;
-
-inline SimConnectionsClk& get_sim_clk()
-{
-  CONNECTIONS_ASSERT_MSG(ConManager_statics<void>::sim_clk.clk_ptr, "You must call Connections::set_sim_clk(&clk) before sc_start()");
-  return ConManager_statics<void>::sim_clk;
-}
-
-inline ConManager& get_conManager()
-{
-  return ConManager_statics<void>::conManager;
-}
-
 inline bool& get_rand_stall_enable()
 {
   return ConManager_statics<void>::rand_stall_enable;
@@ -521,7 +509,6 @@ inline bool& get_rand_stall_print_debug_enable()
   return ConManager_statics<void>::rand_stall_print_debug_enable;
 }
  
-#ifdef __CONN_RAND_STALL_FEATURE
 /**
  * \brief Enable global random stalling support.
  * \ingroup Connections
@@ -647,9 +634,9 @@ inline bool& get_rand_stall_print_debug_enable()
     ConManager_statics<void>::rand_stall_print_debug_enable = false;
   }
 
-#endif
+#endif //__CONN_RAND_STALL_FEATURE
 
-#endif
+#endif //CONNECTIONS_SIM_ONLY
 
 //------------------------------------------------------------------------
 // InBlocking MARSHALL_PORT
@@ -780,7 +767,7 @@ public:
   explicit TLMToDirectOutPort(const char* name, tlm::tlm_fifo<Message> &fifo)
       : val(CONNECTIONS_CONCAT(name, "val")),
         rdy(CONNECTIONS_CONCAT(name, "rdy")),
-	msg(CONNECTIONS_CONCAT(name, "msg")) {
+        msg(CONNECTIONS_CONCAT(name, "msg")) {
     Init_SIM(name, fifo);
   }
 
@@ -837,7 +824,7 @@ public:
   explicit DirectToTLMInPort (const char* name, tlm::tlm_fifo<Message> &fifo)
       : val(CONNECTIONS_CONCAT(name, "val")),
         rdy(CONNECTIONS_CONCAT(name, "rdy")),
-	msg(CONNECTIONS_CONCAT(name, "msg")) {
+        msg(CONNECTIONS_CONCAT(name, "msg")) {
     Init_SIM(name, fifo);
   }
 
@@ -960,10 +947,11 @@ public:
 
 template <typename Message>
 #ifdef CONNECTIONS_SIM_ONLY
-class InBlocking_abs : public Blocking_abs {
+class InBlocking_abs : public Blocking_abs
 #else
-class InBlocking_abs {
+class InBlocking_abs
 #endif
+{
  public:
 
   // Protected because generic abstract class
@@ -1036,7 +1024,7 @@ class InBlocking_Ports_abs : public InBlocking_abs<Message> {
     rdy(sc_gen_unique_name("in_rdy"))
       {
 #ifndef __SYNTHESIS__
-	this->read_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(val.name());
 #endif
       }
 
@@ -1047,7 +1035,7 @@ class InBlocking_Ports_abs : public InBlocking_abs<Message> {
     rdy(CONNECTIONS_CONCAT(name, "rdy"))
       {
 #ifndef __SYNTHESIS__
-	this->read_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(val.name());
 #endif
       }
 
@@ -1478,28 +1466,28 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
   bool Post() {
     if((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable())) {
       if (post_pacer->tic()) {
-	if((local_rand_stall_print_debug_override ? local_rand_stall_print_debug_enable : get_rand_stall_print_debug_enable()) && (!pacer_stall)) {
-	  std::string name = this->val.name();
-	  if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
-	  if(actual_process_b) {
-	    CONNECTIONS_COUT("Entering random stall on port " << name << " in thread '" << actual_process_b->basename() << "'." << endl);
-	  } else {
-	    CONNECTIONS_COUT("Entering random stall on port " << name << " in UNKNOWN thread (port needs to be Reset to register thread)." << endl);
-	  }
-	  rand_stall_counter = 0;
-	}
-	pacer_stall=true;
+        if((local_rand_stall_print_debug_override ? local_rand_stall_print_debug_enable : get_rand_stall_print_debug_enable()) && (!pacer_stall)) {
+          std::string name = this->val.name();
+          if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
+          if(actual_process_b) {
+            CONNECTIONS_COUT("Entering random stall on port " << name << " in thread '" << actual_process_b->basename() << "'." << endl);
+          } else {
+            CONNECTIONS_COUT("Entering random stall on port " << name << " in UNKNOWN thread (port needs to be Reset to register thread)." << endl);
+          }
+          rand_stall_counter = 0;
+        }
+        pacer_stall=true;
       } else {
-	if((local_rand_stall_print_debug_override ? local_rand_stall_print_debug_enable : get_rand_stall_print_debug_enable()) && (pacer_stall)) {
-	  std::string name = this->val.name();
-	  if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
-	  if(actual_process_b) {
-	    CONNECTIONS_COUT("Exiting random stall on port " << name << " in thread '" << actual_process_b->basename() << "'. Was stalled for " << rand_stall_counter << " cycles." << endl);
-	  } else {
-	    CONNECTIONS_COUT("Exiting random stall on port " << name << " in thread UNKNOWN thread (port needs to be Reset to register thread). Was stalled for " << rand_stall_counter << " cycles." << endl);
-	  }
-	}
-	pacer_stall=false;
+        if((local_rand_stall_print_debug_override ? local_rand_stall_print_debug_enable : get_rand_stall_print_debug_enable()) && (pacer_stall)) {
+          std::string name = this->val.name();
+          if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
+          if(actual_process_b) {
+            CONNECTIONS_COUT("Exiting random stall on port " << name << " in thread '" << actual_process_b->basename() << "'. Was stalled for " << rand_stall_counter << " cycles." << endl);
+          } else {
+            CONNECTIONS_COUT("Exiting random stall on port " << name << " in thread UNKNOWN thread (port needs to be Reset to register thread). Was stalled for " << rand_stall_counter << " cycles." << endl);
+          }
+        }
+        pacer_stall=false;
       }
     } else {
       pacer_stall = false;
@@ -1699,6 +1687,7 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
 
 #endif // __SYNTHESIS__
 
+#ifdef HLS_CATAPULT
   // Bind to p2p<>::in
   void Bind(p2p<SYN>::in<Message>& rhs) {
     this->msg(rhs.i_dat);
@@ -1712,6 +1701,7 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
     this->val(rhs.vld);
     this->rdy(rhs.rdy);
   }
+#endif
 
   // Binding
   template <typename C>
@@ -1752,7 +1742,7 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
       InBlocking_SimPorts_abs<Message>(name)
     , msg(CONNECTIONS_CONCAT(name, "msg"))
 #ifdef CONNECTIONS_SIM_ONLY
-    , marker(ccs_concat(name, "in_port_marker"), width, &(this->val), &(this->rdy), &msg)
+    , marker(CONNECTIONS_CONCAT(name, "in_port_marker"), width, &(this->val), &(this->rdy), &msg)
 #endif
    {}
 
@@ -1877,6 +1867,7 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
 
 #endif // __SYNTHESIS__
   
+#ifdef HLS_CATAPULT
   // Bind to p2p<>::in
   void Bind(p2p<SYN>::in<Message>& rhs) {
     this->msg(rhs.i_dat);
@@ -1890,6 +1881,7 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
     this->val(rhs.vld);
     this->rdy(rhs.rdy);
   }
+#endif
 
   // Binding
   template <typename C>
@@ -1905,7 +1897,7 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
     result.Marshall(marshaller);
     m = result.val;
   }
-};  
+};
 
 template <typename Message>
 class InBlocking <Message, DIRECT_PORT> : public InBlocking_SimPorts_abs<Message> {
@@ -1992,15 +1984,15 @@ class InBlocking <Message, TLM_PORT> : public InBlocking_abs<Message> {
     i_fifo(sc_gen_unique_name("i_fifo"))
       {
 #ifdef __CONN_RAND_STALL_FEATURE
-	Init_SIM(sc_gen_unique_name("in"));
-#endif	
+        Init_SIM(sc_gen_unique_name("in"));
+#endif
       }
   
   explicit InBlocking(const char* name) : InBlocking_abs<Message>(name),
     i_fifo(CONNECTIONS_CONCAT(name, "i_fifo"))
       {
 #ifdef __CONN_RAND_STALL_FEATURE
-	Init_SIM(name);
+        Init_SIM(name);
 #endif
       }
   
@@ -2188,10 +2180,11 @@ class In<Message, TLM_PORT> : public InBlocking<Message, TLM_PORT> {
 
 template <typename Message>
 #ifdef CONNECTIONS_SIM_ONLY
-class OutBlocking_abs : public Blocking_abs {
+class OutBlocking_abs : public Blocking_abs
 #else 
-class OutBlocking_abs {
+class OutBlocking_abs
 #endif
+{
  public:
   
   // Protected because abstract class
@@ -2256,7 +2249,7 @@ class OutBlocking_Ports_abs : public OutBlocking_abs<Message> {
     rdy(sc_gen_unique_name("out_rdy"))
       {
 #ifndef __SYNTHESIS__
-	this->write_reset_check.set_val_name(val.name());
+        this->write_reset_check.set_val_name(val.name());
 #endif
       }
   
@@ -2267,7 +2260,7 @@ class OutBlocking_Ports_abs : public OutBlocking_abs<Message> {
     rdy(CONNECTIONS_CONCAT(name, "rdy"))
       {
 #ifndef __SYNTHESIS__
-	this->write_reset_check.set_val_name(val.name());
+        this->write_reset_check.set_val_name(val.name());
 #endif
       }
   
@@ -2610,6 +2603,7 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
 
 #endif // __SYNTHESIS__
 
+#ifdef HLS_CATAPULT
   // Bind to p2p<>::out
   void Bind(p2p<SYN>::out<Message>& rhs) {
     this->msg(rhs.o_dat);
@@ -2623,6 +2617,7 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
     this->val(rhs.vld);
     this->rdy(rhs.rdy);
   }
+#endif
 
   // Binding
   template <typename C>
@@ -2681,7 +2676,7 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     : OutBlocking_SimPorts_abs<Message>(name)
     , msg(CONNECTIONS_CONCAT(name, "msg"))
 #ifdef CONNECTIONS_SIM_ONLY
-    , marker(ccs_concat(name, "out_port_marker"), width, &(this->val), &(this->rdy), &msg)
+    , marker(CONNECTIONS_CONCAT(name, "out_port_marker"), width, &(this->val), &(this->rdy), &msg)
     , driver(0)
     , log_stream(0)
 #endif
@@ -3227,8 +3222,8 @@ class Combinational_Ports_abs : public Combinational_abs<Message> {
     rdy(sc_gen_unique_name("comb_rdy"))
       {
 #ifndef __SYNTHESIS__
-	this->read_reset_check.set_val_name(val.name());
-	this->write_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(val.name());
+        this->write_reset_check.set_val_name(val.name());
 #endif
       }
 
@@ -3239,8 +3234,8 @@ class Combinational_Ports_abs : public Combinational_abs<Message> {
     rdy(CONNECTIONS_CONCAT(name, "rdy")) 
       {
 #ifndef __SYNTHESIS__
-	this->read_reset_check.set_val_name(val.name());
-	this->write_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(val.name());
+        this->write_reset_check.set_val_name(val.name());
 #endif
       }
 
@@ -3572,9 +3567,9 @@ class Combinational_SimPorts_abs
       return in_str;
     } else if(in_bound) {
       if(in_ptr)
-	return in_ptr->val.name();
+        return in_ptr->val.name();
       else
-	return "TLM_INTERFACE";
+        return "TLM_INTERFACE";
     } else {
       return "UNBOUND";
     }
@@ -3585,9 +3580,9 @@ class Combinational_SimPorts_abs
       return out_str;
     } else if(out_bound) {
       if(out_ptr)
-	return out_ptr->val.name();
+        return out_ptr->val.name();
       else
-	return "TLM_INTERFACE";
+        return "TLM_INTERFACE";
     } else {
       return "UNBOUND";
     }
@@ -3661,14 +3656,14 @@ class Combinational_SimPorts_abs
 #pragma design modulario < in >
   bool received(Message& data) {
     if (in_val.read())
-      {
-	/* MsgBits mbits = in_msg.read(); */
-	/* Marshaller<WMessage::width> marshaller(mbits); */
-	/* WMessage result; */
-	/* result.Marshall(marshaller); */
-	/* data = result.val; */
-	read_msg(data);
-	return true;
+    {
+      /* MsgBits mbits = in_msg.read(); */
+      /* Marshaller<WMessage::width> marshaller(mbits); */
+      /* WMessage result; */
+      /* result.Marshall(marshaller); */
+      /* data = result.val; */
+      read_msg(data);
+      return true;
     }
 
     // not valid
@@ -3680,7 +3675,7 @@ class Combinational_SimPorts_abs
   }
   
 #pragma design modulario < in >
-  bool transmitted() { 	return out_rdy.read(); }
+  bool transmitted() { return out_rdy.read(); }
 
 
 
@@ -3723,18 +3718,18 @@ class Combinational_SimPorts_abs
     if(!b.is_full()) {
       Message m;
       if(received(m)) {
-	BA_Message<Message> bam;
-	bam.m = m;
-	assert(latency > 0);
-	bam.ready_cycle = current_cycle + latency;
-	b.write(bam);
+        BA_Message<Message> bam;
+        bam.m = m;
+        assert(latency > 0);
+        bam.ready_cycle = current_cycle + latency;
+        b.write(bam);
       }
     }
 
     // Output
     if(!b.is_empty()) {
       if(transmitted() && val_set_by_api) {
-	b.read(); // pop
+        b.read(); // pop
       }
     }
     return true;
@@ -4057,7 +4052,7 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
     {
         if (!parent.in_bound)
         {
-	  out(parent);
+          out(parent);
         } else {
             sc_signal<MsgBits>* dummy_out_msg = new sc_signal<MsgBits>;
             sc_signal<bool>* dummy_out_val = new sc_signal<bool>;
@@ -4071,7 +4066,7 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
         }
         if (!parent.out_bound)
         {
-	  in(parent);
+          in(parent);
         } else {
             sc_signal<MsgBits>* dummy_in_msg = new sc_signal<MsgBits>;
             sc_signal<bool>* dummy_in_val = new sc_signal<bool>;
@@ -4235,9 +4230,9 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
     class DummyPortManager : public sc_module {
         SC_HAS_PROCESS(DummyPortManager);
     private:
-	InBlocking<Message,DIRECT_PORT>& in;
-	OutBlocking<Message,DIRECT_PORT>& out;
-	Combinational<Message,DIRECT_PORT>& parent;
+        InBlocking<Message,DIRECT_PORT>& in;
+        OutBlocking<Message,DIRECT_PORT>& out;
+        Combinational<Message,DIRECT_PORT>& parent;
 
     public:
    DummyPortManager(sc_module_name name, InBlocking<Message,DIRECT_PORT>& in_, OutBlocking<Message,DIRECT_PORT>& out_, Combinational<Message,DIRECT_PORT>& parent_)
@@ -4248,7 +4243,7 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
     {
         if (!parent.in_bound)
         {
-	  out(parent);
+            out(parent);
         } else {
             sc_signal<Message>* dummy_out_msg = new sc_signal<Message>;
             sc_signal<bool>* dummy_out_val = new sc_signal<bool>;
@@ -4262,7 +4257,7 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
         }
         if (!parent.out_bound)
         {
-	  in(parent);
+            in(parent);
         } else {
             sc_signal<Message>* dummy_in_msg = new sc_signal<Message>;
             sc_signal<bool>* dummy_in_val = new sc_signal<bool>;
@@ -4356,8 +4351,8 @@ class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message
  public:
   tlm::tlm_fifo<Message> fifo;
 };
-#endif
-	  
+#endif // CONNECTIONS_SIM_ONLY
+
 }  // namespace Connections
 
 #endif  // __CONNECTIONS__CONNECTIONS_H__
