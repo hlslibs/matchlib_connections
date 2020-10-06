@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  * 
@@ -13,9 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-//========================================================================
+//*****************************************************************************************
 // connections.h
-//========================================================================
+//
+// Revision History:
+//   1.2.0   - Added support for multiple clocks
+//
+//*****************************************************************************************
 
 #ifndef __CONNECTIONS__CONNECTIONS_H__
 #define __CONNECTIONS__CONNECTIONS_H__
@@ -44,6 +49,9 @@
 #endif
 
 #include <systemc.h>
+#include "ac_sysc_macros.h"
+#include "ac_sysc_trace.h"
+
 #include "marshaller.h"
 
 #ifndef __SYNTHESIS__
@@ -52,8 +60,10 @@
 
 #ifdef CONNECTIONS_SIM_ONLY
 #include <vector>
+#include <map>
 #include "Pacer.h"
 #include <tlm.h>
+#include <sysc/kernel/sc_reset.h>
 #endif
 
 /**
@@ -229,11 +239,113 @@ template <typename Message, unsigned int NumEntries, connections_port_t port_mar
 class Buffer;
 
 class Connections_BA_abs;
-}
+}  // namespace Connections
 
 // Declarations used in the Marshaller
 SpecialWrapperIfc(Connections::In);
 SpecialWrapperIfc(Connections::Out);
+
+#if defined(CONNECTIONS_NAMING_CATAPULT)
+#define _VLDNAME_ vld
+#define _RDYNAME_ rdy
+#define _DATNAME_ dat
+#define _VLDNAMESTR_ "vld"
+#define _RDYNAMESTR_ "rdy"
+#define _DATNAMESTR_ "dat"
+
+#define _VLDNAMEIN_ in_vld
+#define _RDYNAMEIN_ in_rdy
+#define _DATNAMEIN_ in_dat
+#define _VLDNAMEINSTR_ "in_vld"
+#define _RDYNAMEINSTR_ "in_rdy"
+#define _DATNAMEINSTR_ "in_dat"
+
+#define _VLDNAMEOUT_ out_vld
+#define _RDYNAMEOUT_ out_rdy
+#define _DATNAMEOUT_ out_dat
+#define _VLDNAMEOUTSTR_ "out_vld"
+#define _RDYNAMEOUTSTR_ "out_rdy"
+#define _DATNAMEOUTSTR_ "out_dat"
+
+#define _COMBVLDNAMESTR_ "comb_vld"
+#define _COMBRDYNAMESTR_ "comb_rdy"
+#define _COMBDATNAMESTR_ "comb_dat"
+
+#define _COMBVLDNAMEINSTR_ "comb_in_vld"
+#define _COMBRDYNAMEINSTR_ "comb_in_rdy"
+#define _COMBDATNAMEINSTR_ "comb_in_dat"
+#define _COMBVLDNAMEOUTSTR_ "comb_out_vld"
+#define _COMBRDYNAMEOUTSTR_ "comb_out_rdy"
+#define _COMBDATNAMEOUTSTR_ "comb_out_dat"
+
+#elif defined(CONNECTIONS_NAMING_CATAPULT_RSC)
+#define _VLDNAME_ rsc_vld
+#define _RDYNAME_ rsc_rdy
+#define _DATNAME_ rsc_dat
+#define _VLDNAMESTR_ "rsc_vld"
+#define _RDYNAMESTR_ "rsc_rdy"
+#define _DATNAMESTR_ "rsc_dat"
+
+#define _VLDNAMEIN_ rsc_in_vld
+#define _RDYNAMEIN_ rsc_in_rdy
+#define _DATNAMEIN_ rsc_in_dat
+#define _VLDNAMEINSTR_ "rsc_in_vld"
+#define _RDYNAMEINSTR_ "rsc_in_rdy"
+#define _DATNAMEINSTR_ "rsc_in_dat"
+
+#define _VLDNAMEOUT_ rsc_out_vld
+#define _RDYNAMEOUT_ rsc_out_rdy
+#define _DATNAMEOUT_ rsc_out_dat
+#define _VLDNAMEOUTSTR_ "rsc_out_vld"
+#define _RDYNAMEOUTSTR_ "rsc_out_rdy"
+#define _DATNAMEOUTSTR_ "rsc_out_dat"
+
+#define _COMBVLDNAMESTR_ "rsc_comb_vld"
+#define _COMBRDYNAMESTR_ "rsc_comb_rdy"
+#define _COMBDATNAMESTR_ "rsc_comb_dat"
+
+#define _COMBVLDNAMEINSTR_ "rsc_comb_in_vld"
+#define _COMBRDYNAMEINSTR_ "rsc_comb_in_rdy"
+#define _COMBDATNAMEINSTR_ "rsc_comb_in_dat"
+#define _COMBVLDNAMEOUTSTR_ "rsc_comb_out_vld"
+#define _COMBRDYNAMEOUTSTR_ "rsc_comb_out_rdy"
+#define _COMBDATNAMEOUTSTR_ "rsc_comb_out_dat"
+
+#else
+// Default is original nvidia naming
+#define _VLDNAME_ val
+#define _RDYNAME_ rdy
+#define _DATNAME_ msg
+#define _VLDNAMESTR_ "val"
+#define _RDYNAMESTR_ "rdy"
+#define _DATNAMESTR_ "msg"
+
+#define _VLDNAMEIN_ in_val
+#define _RDYNAMEIN_ in_rdy
+#define _DATNAMEIN_ in_msg
+#define _VLDNAMEINSTR_ "in_val"
+#define _RDYNAMEINSTR_ "in_rdy"
+#define _DATNAMEINSTR_ "in_msg"
+
+#define _VLDNAMEOUT_ out_val
+#define _RDYNAMEOUT_ out_rdy
+#define _DATNAMEOUT_ out_msg
+#define _VLDNAMEOUTSTR_ "out_val"
+#define _RDYNAMEOUTSTR_ "out_rdy"
+#define _DATNAMEOUTSTR_ "out_msg"
+
+#define _COMBVLDNAMESTR_ "comb_val"
+#define _COMBRDYNAMESTR_ "comb_rdy"
+#define _COMBDATNAMESTR_ "comb_msg"
+
+#define _COMBVLDNAMEINSTR_ "comb_in_val"
+#define _COMBRDYNAMEINSTR_ "comb_in_rdy"
+#define _COMBDATNAMEINSTR_ "comb_in_msg"
+#define _COMBVLDNAMEOUTSTR_ "comb_out_val"
+#define _COMBRDYNAMEOUTSTR_ "comb_out_rdy"
+#define _COMBDATNAMEOUTSTR_ "comb_out_msg"
+
+#endif
 
 namespace Connections {
 
@@ -257,13 +369,16 @@ class ResetChecker {
   void reset() {
     is_reset = true;
   }
-  
+
   void check() {
 #ifndef __SYNTHESIS__
     if(!is_reset) {
       std::string name = this->name;
       if(is_val_name) {
-        if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
+        std::string nameSuff = "_";
+        nameSuff += _VLDNAMESTR_;
+        unsigned int suffLen = nameSuff.length();
+        if(name.substr(name.length() - suffLen,suffLen) == nameSuff) { name.erase(name.length() - suffLen,suffLen); }
       } else {
         // Add in hierarchcy to name
         name = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + this->name;
@@ -312,61 +427,127 @@ class SimConnectionsClk : public clk_statics<void>
     public:
     SimConnectionsClk()
     {
-     clk_ptr = 0;
 #ifndef NO_DEFAULT_CONNECTIONS_CLOCK
-     clk_ptr = new sc_clock("default_sim_clk", 1, SC_NS, 0.5, 0, SC_NS, true);
+     // clk_vector.push_back(new sc_clock("default_sim_clk", 1, SC_NS, 0.5, 0, SC_NS, true));
 #endif
     }
 
-    void set(sc_clock* clk_ptr_) { clk_ptr = clk_ptr_; }; // should we use a module that is binded instead?
+    void set(sc_clock* clk_ptr_) { /* clk_vector.push_back(clk_ptr_);*/  };
 
-    void pre_delay() const
+    void pre_delay(int c) const
     {
-        wait(adjust_for_edge(get_period_delay()-epsilon).to_seconds(),SC_SEC);
+        wait(adjust_for_edge(get_period_delay(c)-epsilon, c).to_seconds(),SC_SEC);
     }
 
-    void post_delay() const
+    void post_delay(int c) const
     {
-        wait(adjust_for_edge(epsilon).to_seconds(),SC_SEC);
+        wait(adjust_for_edge(epsilon, c).to_seconds(),SC_SEC);
     }
 
-    inline void post2pre_delay() const
+    inline void post2pre_delay(int c) const
     {
-        static double delay_sec((get_period_delay()-2*epsilon).to_seconds()); //caching it to optimize wall runtime 
-        wait(delay_sec, SC_SEC);
+        wait(clk_info_vector[c].post2pre_delay);
     }
 
     inline void pre2post_delay() const
     {
-        static double delay_sec((2*epsilon).to_seconds()); //caching it to optimize wall runtime 
-        wait(delay_sec, SC_SEC);
+        static sc_time delay(((2*epsilon).to_seconds()), SC_SEC);
+               //caching it to optimize wall runtime 
+        wait(delay);
     }
 
-    inline void period_delay() const
+    inline void period_delay(int c) const
     {
-        static double delay_sec(get_period_delay().to_seconds()); //caching it to optimize wall runtime 
-        wait(delay_sec, SC_SEC);
+        wait(clk_info_vector[c].period_delay);
     }
 
+    struct clk_info {
+      clk_info(sc_clock* cp) {
+        clk_ptr = cp;
+        do_sync_reset = 0;
+        do_async_reset = 0;
+      }
+      sc_clock* clk_ptr;
+      sc_time post2pre_delay;
+      sc_time period_delay;
+      sc_time clock_edge; // time of next active edge during simulation, per clock
+      bool do_sync_reset;
+      bool do_async_reset;
+    };
 
-    sc_clock* clk_ptr;
+    std::vector<clk_info> clk_info_vector;
+
+    struct clock_alias_info {
+      const sc_event* sc_clock_event;
+      const sc_event* alias_event;
+    };
+    std::vector<clock_alias_info> clock_alias_vector;
+
+    void add_clock_alias(const sc_event& sc_clock_event, const sc_event& alias_event) {
+      clock_alias_info cai;
+      cai.sc_clock_event = &sc_clock_event;
+      cai.alias_event = &alias_event;
+      clock_alias_vector.push_back(cai);
+    }
+
+    void find_clocks(sc_object* obj) {
+     sc_clock* clk = dynamic_cast<sc_clock*>(obj);
+     if (clk)
+     {
+       clk_info_vector.push_back(clk);
+       std::cout << "Connections Clock: " << clk->name() << " Period: " << clk->period() << std::endl;
+     }
+
+     std::vector<sc_object*> children = obj->get_child_objects();
+     for ( unsigned i = 0; i < children.size(); i++ )
+       if ( children[i] )
+         find_clocks(children[i]);
+    }
+
+    void start_of_simulation() {
+      const std::vector<sc_object*> tops = sc_get_top_level_objects();
+      for (unsigned i=0; i < tops.size(); i++)
+        if (tops[i])
+          find_clocks(tops[i]);
+
+      for (unsigned c=0; c < clk_info_vector.size(); c++)
+      {
+        clk_info_vector[c].post2pre_delay = (sc_time((get_period_delay(c)-2*epsilon).to_seconds(), SC_SEC));
+        clk_info_vector[c].period_delay = (sc_time((get_period_delay(c).to_seconds()), SC_SEC));
+	clk_info_vector[c].clock_edge = adjust_for_edge(SC_ZERO_TIME,c);
+      }
+    }
+
+    inline void check_on_clock_edge(int c)
+    {
+      if (clk_info_vector[c].clock_edge != sc_time_stamp())
+      {
+        sc_process_handle h = sc_get_current_process_handle();
+        std::ostringstream ss;
+        ss << "Push or Pop called outside of active clock edge. \n";
+        ss << "Process: " << h.name() << "\n";
+        ss << "Current simulation time: " << sc_time_stamp() << "\n";
+        ss << "Active clock edge: " << clk_info_vector[c].clock_edge << "\n";
+        SC_REPORT_ERROR("CONNECTIONS-113", ss.str().c_str());
+      }
+    }
 
     private:
 
-    inline sc_time get_period_delay() const
+    inline sc_time get_period_delay(int c) const
     {
-        return clk_ptr->period();
+        return clk_info_vector.at(c).clk_ptr->period();
     }
 
-    double get_duty_ratio() const
+    double get_duty_ratio(int c) const
     {
-        return clk_ptr->duty_cycle();
+        return clk_info_vector.at(c).clk_ptr->duty_cycle();
     }
 
-    sc_time adjust_for_edge(sc_time t) const
+    sc_time adjust_for_edge(sc_time t, int c) const
     {
-        if (!clk_ptr->posedge_first())
-            return t + get_duty_ratio()*get_period_delay();
+        if (!clk_info_vector.at(c).clk_ptr->posedge_first())
+            return t + get_duty_ratio(c)*get_period_delay(c);
         
         return t;
     }
@@ -376,19 +557,22 @@ class SimConnectionsClk : public clk_statics<void>
 // it is used to allow a containter of pointers to any blocking connection
 class Blocking_abs {
 public:
-    Blocking_abs() {};
+    Blocking_abs() { clock_registered=false; sibling_port=0; };
 
     virtual bool Post() {return false;};
     virtual bool Pre()  {return false;};
+    virtual bool PrePostReset()  {return false;}; 
+    virtual std::string full_name() { return "unnamed"; }
+    bool clock_registered;
+    int  clock_number;
+    virtual void do_reset_check() {}
+    Blocking_abs* sibling_port;
 };
 
 
 class ConManager {
 public:
-    ConManager()
-    {
-        sc_spawn(sc_bind(&ConManager::run, this, true), "connection_manager_run");
-    }
+    ConManager() { }
 
     std::vector<Blocking_abs*> tracked;
     std::vector<Connections_BA_abs*> tracked_annotate;
@@ -397,7 +581,305 @@ public:
     {
         tracked.push_back(c);
     }
-    
+
+    std::map<const Blocking_abs*, const sc_event*> map_port_to_event;
+    std::map<const sc_event*, int> map_event_to_clock; // value is clock # + 1, so that 0 is error
+
+    struct process_reset_info {
+     process_reset_info() {
+      process_ptr = 0;
+      async_reset_level = false;
+      sync_reset_level = false;
+      async_reset_sig_if = 0;
+      sync_reset_sig_if = 0;
+      clk = 0;
+     }
+     unsigned clk;
+     sc_process_b* process_ptr;
+     bool        async_reset_level;
+     bool        sync_reset_level;
+     const sc_signal_in_if<bool>* async_reset_sig_if;
+     const sc_signal_in_if<bool>* sync_reset_sig_if;
+     bool operator == (const process_reset_info& rhs) {
+      return (async_reset_sig_if == rhs.async_reset_sig_if) &&
+             ( sync_reset_sig_if == rhs.sync_reset_sig_if) &&
+             (async_reset_level  == rhs.async_reset_level) &&
+             ( sync_reset_level  == rhs.sync_reset_level);
+     }
+
+     std::string to_string() {
+       std::ostringstream ss;
+       ss << "Process name: " << process_ptr->name();
+       if (async_reset_sig_if) {
+         const char* nm = "unknown";
+         const sc_object* ob = dynamic_cast<const sc_object*>(async_reset_sig_if);
+         sc_assert(ob);
+         nm = ob->name();
+         ss << " async reset signal: " << std::string(nm) << " level: " << async_reset_level ;
+       }
+
+       if (sync_reset_sig_if) {
+         const char* nm = "unknown";
+         const sc_object* ob = dynamic_cast<const sc_object*>(sync_reset_sig_if);
+         sc_assert(ob);
+         nm = ob->name();
+         ss << " sync reset signal: " << std::string(nm) << " level: " << sync_reset_level ;
+       }
+
+       return ss.str();
+     }
+    };
+    std::map<int, process_reset_info> map_clk_to_reset_info;
+    std::map<sc_process_b*, process_reset_info> map_process_to_reset_info;
+    bool sim_clk_initialized;
+
+    std::vector<std::vector<Blocking_abs*>*> tracked_per_clk;
+
+    void init_sim_clk()
+    {
+      if (sim_clk_initialized) 
+        return;
+
+      sim_clk_initialized = true;
+
+      get_sim_clk().start_of_simulation();
+
+      for (unsigned c=0; c < get_sim_clk().clk_info_vector.size(); c++)
+      {
+        map_event_to_clock[&(get_sim_clk().clk_info_vector[c].clk_ptr->posedge_event())] = c + 1; // add +1 encoding
+        std::ostringstream ss, ssync;
+        ss << "connections_manager_run_" << c;
+        sc_spawn(sc_bind(&ConManager::run, this, c), ss.str().c_str());
+        tracked_per_clk.push_back(new std::vector<Blocking_abs*>);
+        ssync << ss.str();
+        ss << "async_reset_thread";
+        sc_spawn(sc_bind(&ConManager::async_reset_thread, this, c), ss.str().c_str());
+        ssync << "sync_reset_thread";
+        sc_spawn(sc_bind(&ConManager::sync_reset_thread, this, c), ssync.str().c_str());
+      }
+
+      for (unsigned c=0; c < get_sim_clk().clock_alias_vector.size(); c++)
+      {
+        int resolved = map_event_to_clock[get_sim_clk().clock_alias_vector[c].sc_clock_event];
+        if (resolved) {
+          map_event_to_clock[get_sim_clk().clock_alias_vector[c].alias_event] = resolved;
+        }
+        else {
+           SC_REPORT_ERROR("CONNECTIONS-225", "Could not resolve alias clock!");
+        }
+      }
+
+      sc_spawn(sc_bind(&ConManager::check_registration, this, true), "check_registration");
+    }
+
+    void async_reset_thread(int c) {
+      wait(10, SC_PS);
+      process_reset_info& pri = map_clk_to_reset_info[c];
+
+      if (pri.async_reset_sig_if == 0)
+        return;
+
+      while (1) {
+        wait(pri.async_reset_sig_if->value_changed_event());
+        // std::cout << "see async reset val now: " << pri.async_reset_sig_if->read() << "\n";
+        get_sim_clk().clk_info_vector[c].do_async_reset =
+            (pri.async_reset_sig_if->read() == pri.async_reset_level);
+      }
+    }
+
+    void sync_reset_thread(int c) {
+      wait(10, SC_PS);
+      process_reset_info& pri = map_clk_to_reset_info[c];
+
+      if (pri.sync_reset_sig_if == 0)
+        return;
+
+      while (1) {
+        wait(pri.sync_reset_sig_if->value_changed_event());
+        // std::cout << "see sync reset val now: " << pri.sync_reset_sig_if->read() << "\n";
+        get_sim_clk().clk_info_vector[c].do_sync_reset =
+            (pri.sync_reset_sig_if->read() == pri.sync_reset_level);
+      }
+    }
+
+
+    void check_registration(bool b)
+    {
+       wait(50, SC_PS); // allow all Reset calls to complete, so that add_clock_event calls are all done
+
+       // 2 loops here: first will produce list of all warnings, second will error out on first error.
+       for (unsigned i=0; i < tracked.size(); i++)
+         tracked[i]->do_reset_check();
+
+       for (unsigned i=0; i < tracked.size(); i++)
+         if (!tracked[i]->clock_registered || (map_port_to_event[tracked[i]] == 0))
+         {
+
+           if (tracked[i]->sibling_port)
+           {
+             tracked[i]->clock_number = tracked[i]->sibling_port->clock_number;
+             tracked[i]->clock_registered = true;
+             tracked_per_clk[tracked[i]->clock_number]->push_back(tracked[i]);
+           }
+
+           // See Combinational_SimPorts_abs::do_reset_check() for explanation
+           if (tracked[i]->full_name() == "Combinational_SimPorts_abs")
+             continue;
+
+           const sc_object* ob = dynamic_cast<const sc_object*>(tracked[i]);
+           std::string nm(ob?ob->name():"unnamed");
+           SC_REPORT_ERROR("CONNECTIONS-115", 
+             (std::string("Unregistered Blocking_abs!: " + nm + " " + tracked[i]->full_name()).c_str()));
+         }
+
+       for (unsigned i=0; i < get_sim_clk().clk_info_vector.size(); i++)
+       {
+        std::vector<process_reset_info> v;
+        decltype(map_process_to_reset_info)::iterator it; 
+        for (it = map_process_to_reset_info.begin(); it != map_process_to_reset_info.end(); it++)
+        {
+          if (it->second.clk == i)
+            v.push_back(it->second);
+        }
+
+        if (v.size() > 1)
+         for (unsigned u=0; u<v.size(); u++)
+          if (!(v[0] == v[u]))
+          {
+             std::ostringstream ss;
+	     ss << "Two processes using same clock have different reset specs: \n"
+             << v[0].to_string() << "\n"
+             << v[u].to_string() << "\n";
+             SC_REPORT_ERROR("CONNECTIONS-212", ss.str().c_str());
+          }
+       }
+    }
+
+    void add_clock_event(Blocking_abs* c)
+    {
+      init_sim_clk();
+
+      if (c->clock_registered)
+        return;
+
+      c->clock_registered = true;
+
+      class my_process : public sc_process_b {
+      public:
+        // code written in restricted style to work on Accellera sim as well as Questa
+        int static_events_size() { return m_static_events.size(); }
+        const sc_event* first_event() { return m_static_events[0]; }
+        std::vector<sc_reset*>& get_sc_reset_vector() { return m_resets; }
+      };
+
+      sc_process_handle h = sc_get_current_process_handle();
+      sc_object* o = h.get_process_object();
+      sc_process_b* b = dynamic_cast<sc_process_b*>(o);
+      sc_assert(b);
+      my_process* m = static_cast<my_process*>(b);
+      if (m->static_events_size() != 1)
+        SC_REPORT_ERROR("CONNECTIONS-112", 
+           (std::string("Process does not have static sensitivity to exactly 1 event: " + 
+			std::string(h.name())).c_str()));
+
+      const sc_event* e = m->first_event();
+      map_port_to_event[c] = e;
+
+      int clk = map_event_to_clock[e];
+      if (clk == 0)
+        SC_REPORT_ERROR("CONNECTIONS-111", 
+           (std::string("Failed to find sc_clock for process: " + std::string(h.name())).c_str()));
+
+      --clk; // undo +1 encoding for errors
+
+      tracked_per_clk[clk]->push_back(c);
+      c->clock_number = clk;
+
+      class my_reset : public sc_reset {
+      public:
+        const sc_signal_in_if<bool>* get_m_iface_p() { return m_iface_p; }
+        std::vector<sc_reset_target>& get_m_targets() { return m_targets; }
+      };
+
+      // Here we enforce that all processes using a clock have:
+      //  - consistent async resets (at most 1)
+      //  - consistent sync resets  (at most 1)
+      // Note that this applies to entire SC model (ie both DUT and TB)
+
+      for (unsigned r=0; r < m->get_sc_reset_vector().size(); r++)
+      {
+        my_reset* mr = static_cast<my_reset*>(m->get_sc_reset_vector()[r]);
+        sc_assert(mr);
+        const sc_object* ob = dynamic_cast<const sc_object*>(mr->get_m_iface_p());
+        sc_assert(ob);
+
+        for (unsigned t=0; t < mr->get_m_targets().size(); t++)
+          if (mr->get_m_targets()[t].m_process_p == b)
+          {
+            bool level = mr->get_m_targets()[t].m_level;
+
+            process_reset_info& pri = map_process_to_reset_info[b];
+            pri.process_ptr = b;
+            pri.clk = clk;
+
+            if (mr->get_m_targets()[t].m_async)
+	    {
+             if (pri.async_reset_sig_if == 0)
+             {
+               pri.async_reset_sig_if = mr->get_m_iface_p();
+               pri.async_reset_level = level;
+             }
+
+             if (pri.async_reset_sig_if != mr->get_m_iface_p())
+             {
+                std::ostringstream ss;
+	        ss << "Mismatching async reset signal objects for same process: process: " 
+                   << h.name() << " "
+                   << "\n";
+                SC_REPORT_ERROR("CONNECTIONS-212", ss.str().c_str());
+             }
+
+             if (pri.async_reset_level != level)
+             {
+                std::ostringstream ss;
+	        ss << "Mismatching async reset signal level for same process: process: " 
+                   << h.name() << " "
+                   << "\n";
+                SC_REPORT_ERROR("CONNECTIONS-212", ss.str().c_str());
+             }
+	    }
+	    else
+	    {
+             if (pri.sync_reset_sig_if == 0)
+             {
+               pri.sync_reset_sig_if = mr->get_m_iface_p();
+               pri.sync_reset_level = level;
+             }
+
+             if (pri.sync_reset_sig_if != mr->get_m_iface_p())
+             {
+                std::ostringstream ss;
+	        ss << "Mismatching sync reset signal objects for same process: process: " 
+                   << h.name() << " "
+                   << "\n";
+                SC_REPORT_ERROR("CONNECTIONS-212", ss.str().c_str());
+             }
+
+             if (pri.sync_reset_level != level)
+             {
+                std::ostringstream ss;
+	        ss << "Mismatching sync reset signal level for same process: process: " 
+                   << h.name() << " "
+                   << "\n";
+                SC_REPORT_ERROR("CONNECTIONS-212", ss.str().c_str());
+             }
+	    }
+        
+            map_clk_to_reset_info[clk] = pri;
+          }
+      }
+    }
+
     void add_annotate(Connections_BA_abs* c)
     {
         tracked_annotate.push_back(c);
@@ -432,20 +914,41 @@ public:
     }
 
     
-    void run(bool value) {
-        get_sim_clk().post_delay();  // align to occur just after the cycle
+    void run(int clk) {
+        get_sim_clk().post_delay(clk);  // align to occur just after the cycle
+
+        SimConnectionsClk::clk_info& ci = get_sim_clk().clk_info_vector[clk];
 
         while (1) {
             //Post();
-            for (std::vector<Blocking_abs*>::iterator it=tracked.begin(); it!=tracked.end(); )
+            for (std::vector<Blocking_abs*>::iterator it=tracked_per_clk[clk]->begin(); it!=tracked_per_clk[clk]->end(); )
                 if ((*it)->Post()) ++it;
-                    else tracked.erase(it);
-            get_sim_clk().post2pre_delay();
+                    else tracked_per_clk[clk]->erase(it);
+
+            get_sim_clk().post2pre_delay(clk);
+
             //Pre();
-            for (std::vector<Blocking_abs*>::iterator it=tracked.begin(); it!=tracked.end(); )
+            for (std::vector<Blocking_abs*>::iterator it=tracked_per_clk[clk]->begin(); it!=tracked_per_clk[clk]->end(); )
                 if ((*it)->Pre()) ++it;
-                    else tracked.erase(it);
+                    else tracked_per_clk[clk]->erase(it);
+
+            ci.clock_edge += ci.period_delay;
+
+            if (ci.do_sync_reset || ci.do_async_reset)
+            {
+             for (std::vector<Blocking_abs*>::iterator it=tracked_per_clk[clk]->begin();
+	       it!=tracked_per_clk[clk]->end(); ++it)
+                 (*it)->PrePostReset();
+            }
+
             get_sim_clk().pre2post_delay();      
+
+            if (ci.do_sync_reset || ci.do_async_reset)
+            {
+             for (std::vector<Blocking_abs*>::iterator it=tracked_per_clk[clk]->begin();
+	       it!=tracked_per_clk[clk]->end(); ++it)
+                 (*it)->PrePostReset();
+            }
         }
     }
 };
@@ -462,7 +965,7 @@ struct ConManager_statics
 
 inline void set_sim_clk(sc_clock* clk_ptr)
 {
-  ConManager_statics<void>::sim_clk.clk_ptr = clk_ptr;
+  // ConManager_statics<void>::sim_clk.clk_vector.push_back(clk_ptr);
 }
 
 template <class Dummy>
@@ -472,7 +975,7 @@ ConManager ConManager_statics<Dummy>::conManager;
 
 inline SimConnectionsClk& get_sim_clk()
 {
-  CONNECTIONS_ASSERT_MSG(ConManager_statics<void>::sim_clk.clk_ptr, "You must call Connections::set_sim_clk(&clk) before sc_start()");
+  // CONNECTIONS_ASSERT_MSG(ConManager_statics<void>::sim_clk.clk_vector.size() > 0, "You must call Connections::set_sim_clk(&clk) before sc_start()");
   return ConManager_statics<void>::sim_clk;
 }
 
@@ -651,23 +1154,23 @@ SC_MODULE(MarshalledToDirectOutPort) {
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
   sc_signal<MsgBits> msgbits;
-  sc_out<Message> msg;
-  sc_in<bool> val;
+  sc_out<Message> _DATNAME_;
+  sc_in<bool> _VLDNAME_;
   
   void do_marshalled2direct() {
-    if(val) {
+    if(_VLDNAME_) {
       MsgBits mbits = msgbits.read();
       Marshaller<WMessage::width> marshaller(mbits);
       WMessage result;
       result.Marshall(marshaller);
-      msg.write(result.val);
+      _DATNAME_.write(result.val);
     }
   }
   
   SC_CTOR(MarshalledToDirectOutPort) {
     SC_METHOD(do_marshalled2direct);
     sensitive << msgbits;
-    sensitive << val;
+    sensitive << _VLDNAME_;
   }
 };
 
@@ -677,23 +1180,23 @@ SC_MODULE(MarshalledToDirectInPort) {
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
   sc_in<MsgBits> msgbits;
-  sc_in<bool> val;
-  sc_signal<Message> msg;
+  sc_in<bool> _VLDNAME_;
+  sc_signal<Message> _DATNAME_;
 
   void do_marshalled2direct() {
-    if(val) {
+    if(_VLDNAME_) {
       MsgBits mbits = msgbits.read();
       Marshaller<WMessage::width> marshaller(mbits);
       WMessage result;
       result.Marshall(marshaller);
-      msg.write(result.val);
+      _DATNAME_.write(result.val);
     }
   }
   
   SC_CTOR(MarshalledToDirectInPort) {
     SC_METHOD(do_marshalled2direct);
     sensitive << msgbits;
-    sensitive << val;
+    sensitive << _VLDNAME_;
   }
 };
  
@@ -702,13 +1205,13 @@ SC_MODULE(DirectToMarshalledInPort) {
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_in<Message> msg;
+  sc_in<Message> _DATNAME_;
   sc_signal<MsgBits> msgbits;
 
   void do_direct2marshalled() {
     Marshaller<WMessage::width> marshaller;
     //WMessage wm(msg);
-    WMessage wm(msg.read());
+    WMessage wm(_DATNAME_.read());
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
     msgbits.write(bits);
@@ -716,7 +1219,7 @@ SC_MODULE(DirectToMarshalledInPort) {
   
   SC_CTOR(DirectToMarshalledInPort) {
     SC_METHOD(do_direct2marshalled);
-    sensitive << msg;
+    sensitive << _DATNAME_;
   }
 };
 
@@ -725,12 +1228,12 @@ SC_MODULE(DirectToMarshalledOutPort) {
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_signal<Message> msg;
+  sc_signal<Message> _DATNAME_;
   sc_out<MsgBits> msgbits;
 
   void do_direct2marshalled() {
     Marshaller<WMessage::width> marshaller;
-    WMessage wm(msg);
+    WMessage wm(_DATNAME_);
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
     msgbits.write(bits);
@@ -738,7 +1241,7 @@ SC_MODULE(DirectToMarshalledOutPort) {
   
   SC_CTOR(DirectToMarshalledOutPort) {
     SC_METHOD(do_direct2marshalled);
-    sensitive << msg;
+    sensitive << _DATNAME_;
   }
 };
 
@@ -749,15 +1252,15 @@ SC_MODULE(DirectToMarshalledOutPort) {
 template <typename Message>
 class TLMToDirectOutPort : public Blocking_abs {
 public:
-  sc_out<bool> val;
-  sc_in<bool> rdy;
-  sc_out<Message> msg;
+  sc_out<bool> _VLDNAME_;
+  sc_in<bool> _RDYNAME_;
+  sc_out<Message> _DATNAME_;
   
   // Default constructor
   explicit TLMToDirectOutPort(tlm::tlm_fifo<Message> &fifo)
-      : val(sc_gen_unique_name("out_val")),
-        rdy(sc_gen_unique_name("out_rdy")),
-        msg(sc_gen_unique_name("out_msg")) {
+      : _VLDNAME_(sc_gen_unique_name("_VLDNAMEOUT_")),
+        _RDYNAME_(sc_gen_unique_name(_RDYNAMEOUTSTR_ )),
+        _DATNAME_(sc_gen_unique_name(_DATNAMEOUTSTR_)) {
     
     Init_SIM(sc_gen_unique_name("out", fifo));
     
@@ -765,9 +1268,9 @@ public:
 
   // Constructor
   explicit TLMToDirectOutPort(const char* name, tlm::tlm_fifo<Message> &fifo)
-      : val(CONNECTIONS_CONCAT(name, "val")),
-        rdy(CONNECTIONS_CONCAT(name, "rdy")),
-        msg(CONNECTIONS_CONCAT(name, "msg")) {
+      : _VLDNAME_(CONNECTIONS_CONCAT(name, _VLDNAMESTR_)),
+        _RDYNAME_(CONNECTIONS_CONCAT(name, _RDYNAMESTR_)),
+        _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {
     Init_SIM(name, fifo);
   }
 
@@ -781,23 +1284,31 @@ protected:
     get_conManager().add(this);
   }
 
+  std::string full_name() { return "TLMToDirectOutPort"; }
+
   // Blocking_abs functions
   bool Pre() {
-    if (val.read() && rdy.read()) {
-      CONNECTIONS_ASSERT_MSG(fifo->nb_can_get(), "Val and rdy indicated data was available, but no data was available!");
+    if (_VLDNAME_.read() && _RDYNAME_.read()) {
+      CONNECTIONS_ASSERT_MSG(fifo->nb_can_get(), "Vld and rdy indicated data was available, but no data was available!");
       fifo->get(); // Discard, we've already peeked it. Just incrementing the head here.
     }
     return true;
   }
 
+  bool PrePostReset() {
+      Message blank_m;
+      while (fifo->nb_get(blank_m));
+      return true;
+  }
+
   bool Post() { 
     if(fifo->nb_can_peek()) {
-      val.write(true);
-      msg.write(fifo->peek());
+      _VLDNAME_.write(true);
+      _DATNAME_.write(fifo->peek());
     } else {
       Message blank_m;
-      val.write(false);
-      msg.write(blank_m);
+      _VLDNAME_.write(false);
+      _DATNAME_.write(blank_m);
     }
     return true;
   }
@@ -806,15 +1317,15 @@ protected:
 template <typename Message>
 class DirectToTLMInPort : public Blocking_abs {
 public:
-  sc_in<bool> val;
-  sc_out<bool> rdy;
-  sc_in<Message> msg;
+  sc_in<bool> _VLDNAME_;
+  sc_out<bool> _RDYNAME_;
+  sc_in<Message> _DATNAME_;
   
   // Default constructor
   explicit DirectToTLMInPort(tlm::tlm_fifo<Message> &fifo)
-      : val(sc_gen_unique_name("in_val")),
-        rdy(sc_gen_unique_name("in_rdy")),
-        msg(sc_gen_unique_name("in_msg")) {
+      : _VLDNAME_(sc_gen_unique_name(_VLDNAMEINSTR_)),
+        _RDYNAME_(sc_gen_unique_name(_RDYNAMEINSTR_)),
+        _DATNAME_(sc_gen_unique_name(_DATNAMEINSTR_)) {
     
     Init_SIM(sc_gen_unique_name("in", fifo));
     
@@ -822,9 +1333,9 @@ public:
 
   // Constructor
   explicit DirectToTLMInPort (const char* name, tlm::tlm_fifo<Message> &fifo)
-      : val(CONNECTIONS_CONCAT(name, "val")),
-        rdy(CONNECTIONS_CONCAT(name, "rdy")),
-        msg(CONNECTIONS_CONCAT(name, "msg")) {
+      : _VLDNAME_(CONNECTIONS_CONCAT(name, _VLDNAMESTR_)),
+        _RDYNAME_(CONNECTIONS_CONCAT(name, _RDYNAMESTR_)),
+        _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {
     Init_SIM(name, fifo);
   }
 
@@ -837,22 +1348,29 @@ protected:
     this->fifo = &fifo;
     get_conManager().add(this);
   }
+
+  std::string full_name() { return "DirectToTLMInPort"; }
   
   bool Pre() {
-    if (rdy.read() && val.read()) {
+    if (_RDYNAME_.read() && _VLDNAME_.read()) {
       Message data;
-      data = msg.read();
-      CONNECTIONS_ASSERT_MSG(fifo->nb_can_put(), "Val and rdy indicated data was available, but no data was available!");
+      data = _DATNAME_.read();
+      CONNECTIONS_ASSERT_MSG(fifo->nb_can_put(), "Vld and rdy indicated data was available, but no data was available!");
       fifo->put(data);
     }
     return true;
   }
 
+  bool PrePostReset() {
+      // The get() side clears the fifo, nothing to do on the put() side here.
+      return true;
+  }
+
   bool Post() {
     if(fifo->nb_can_put()) {
-      rdy.write(true);
+      _RDYNAME_.write(true);
     } else {
-      rdy.write(false);
+      _RDYNAME_.write(false);
     }
     return true;
   }
@@ -863,17 +1381,17 @@ public:
 
   unsigned w;
   bool named;
-  sc_in<bool>* val;
-  sc_out<bool>* rdy;
-  sc_port_base* msg;
+  sc_in<bool>* _VLDNAME_;
+  sc_out<bool>* _RDYNAME_;
+  sc_port_base* _DATNAME_;
   sc_object* bound_to;
   bool top_port;
 
   in_port_marker() {
     named = false;
-    val = 0;
-    rdy = 0;
-    msg = 0;
+    _VLDNAME_ = 0;
+    _RDYNAME_ = 0;
+    _DATNAME_ = 0;
     bound_to = 0;
     top_port = false;
   }
@@ -882,9 +1400,9 @@ public:
    : sc_object(name)
   {
     named = true;
-    val = _val;
-    rdy = _rdy;
-    msg = _msg;
+    _VLDNAME_ = _val;
+    _RDYNAME_ = _rdy;
+    _DATNAME_ = _msg;
     bound_to = 0;
     top_port = false;
     
@@ -892,8 +1410,8 @@ public:
   }
 
   void end_of_elaboration() {
-   if (val)
-    bound_to = dynamic_cast<sc_object*>(val->operator->());
+   if (_VLDNAME_)
+    bound_to = dynamic_cast<sc_object*>(_VLDNAME_->operator->());
   }
 };
 
@@ -902,17 +1420,17 @@ public:
 
   unsigned w;
   bool named;
-  sc_out<bool>* val;
-  sc_in<bool>* rdy;
-  sc_port_base* msg;
+  sc_out<bool>* _VLDNAME_;
+  sc_in<bool>* _RDYNAME_;
+  sc_port_base* _DATNAME_;
   sc_object* bound_to;
   bool top_port;
 
   out_port_marker() {
     named = false;
-    val = 0;
-    rdy = 0;
-    msg = 0;
+    _VLDNAME_ = 0;
+    _RDYNAME_ = 0;
+    _DATNAME_ = 0;
     bound_to = 0;
     top_port = false;
   }
@@ -921,9 +1439,9 @@ public:
    : sc_object(name)
   {
     named = true;
-    val = _val;
-    rdy = _rdy;
-    msg = _msg;
+    _VLDNAME_ = _val;
+    _RDYNAME_ = _rdy;
+    _DATNAME_ = _msg;
     bound_to = 0;
     top_port = false;
     
@@ -931,8 +1449,8 @@ public:
   }
 
   void end_of_elaboration() {
-   if (val)
-    bound_to = dynamic_cast<sc_object*>(val->operator->());
+   if (_VLDNAME_)
+    bound_to = dynamic_cast<sc_object*>(_VLDNAME_->operator->());
   }
 };
 
@@ -1012,30 +1530,30 @@ template <typename Message>
 class InBlocking_Ports_abs : public InBlocking_abs<Message> {
  public:
   // Interface
-  sc_in<bool> val;
-  sc_out<bool> rdy;
+  sc_in<bool> _VLDNAME_;
+  sc_out<bool> _RDYNAME_;
 
   // Protected because generic
  protected:
   // Default constructor
   InBlocking_Ports_abs()
     : InBlocking_abs<Message>(),
-    val(sc_gen_unique_name("in_val")),
-    rdy(sc_gen_unique_name("in_rdy"))
+    _VLDNAME_(sc_gen_unique_name(_VLDNAMEINSTR_)),
+    _RDYNAME_(sc_gen_unique_name(_RDYNAMEINSTR_))
       {
 #ifndef __SYNTHESIS__
-        this->read_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(_VLDNAME_.name());
 #endif
       }
 
   // Constructor
   explicit InBlocking_Ports_abs(const char* name)
     : InBlocking_abs<Message>(name),
-    val(CONNECTIONS_CONCAT(name, "val")),
-    rdy(CONNECTIONS_CONCAT(name, "rdy"))
+    _VLDNAME_(CONNECTIONS_CONCAT(name, _VLDNAMESTR_)),
+    _RDYNAME_(CONNECTIONS_CONCAT(name, _RDYNAMESTR_))
       {
 #ifndef __SYNTHESIS__
-        this->read_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(_VLDNAME_.name());
 #endif
       }
 
@@ -1043,18 +1561,28 @@ class InBlocking_Ports_abs : public InBlocking_abs<Message> {
   // Reset read
   virtual void Reset() {
     this->read_reset_check.reset();
-    rdy.write(false);
+    _RDYNAME_.write(false);
+#ifdef CONNECTIONS_SIM_ONLY
+    get_conManager().add_clock_event(this);
+#endif
+  }
+
+  void do_reset_check() {
+    this->read_reset_check.check();
   }
 
 // Pop
 #pragma design modulario < in >
   Message Pop() {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     do {
-      rdy.write(true);
+      _RDYNAME_.write(true);
       wait();
-    } while (val.read() != true);
-    rdy.write(false);
+    } while (_VLDNAME_.read() != true);
+    _RDYNAME_.write(false);
 
     Message m;
     read_msg(m);
@@ -1064,10 +1592,13 @@ class InBlocking_Ports_abs : public InBlocking_abs<Message> {
 // Peek
 #pragma design modulario < in >
   Message Peek() {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     
     QUERY_CALL();
-    while (!val.read()) {
+    while (!_VLDNAME_.read()) {
       wait();
     }
     
@@ -1079,15 +1610,18 @@ class InBlocking_Ports_abs : public InBlocking_abs<Message> {
 // PopNB
 #pragma design modulario < in >
   bool PopNB(Message& data, const bool& do_wait = true) {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     
-    rdy.write(true);
+    _RDYNAME_.write(true);
     if (do_wait) {
       wait();
-      rdy.write(false);
+      _RDYNAME_.write(false);
     }
     read_msg(data);
-    return val.read();
+    return _VLDNAME_.read();
   }
   
  protected:
@@ -1127,16 +1661,24 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
 #ifdef CONNECTIONS_SIM_ONLY
     this->read_reset_check.reset();
     Reset_SIM();
+    get_conManager().add_clock_event(this);
 #else
     InBlocking_Ports_abs<Message>::Reset();
 #endif
+  }
+
+  void do_reset_check() {
+    this->read_reset_check.check();
   }
 
 // Pop
 #pragma design modulario < in >
   Message Pop() {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return Pop_SIM();
 #else
     return InBlocking_Ports_abs<Message>::Pop();
@@ -1153,7 +1695,10 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
 #pragma design modulario < in >
   bool PopNB(Message& data, const bool& do_wait = true) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     if (Empty_SIM()) {
       Message m;
       data = m;
@@ -1175,6 +1720,22 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
 
   
 #ifdef __CONN_RAND_STALL_FEATURE
+
+ void set_rand_stall_prob(float &newProb) {
+   if (newProb > 0) {
+     float tmpFloat = (newProb/100.0);
+     post_pacer->set_stall_prob(tmpFloat);
+   }
+ }
+
+ void set_rand_hold_stall_prob(float &newProb) {
+   if (newProb > 0) {
+     float tmpFloat = (newProb/100.0);
+     post_pacer->set_hold_stall_prob(tmpFloat);
+   }
+ }
+ 
+
   /**
    * \brief Enable random stalling support on an input port.
    * \ingroup Connections
@@ -1385,6 +1946,8 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
   sc_process_b *actual_process_b;
 #endif
 
+  std::string full_name() { return "InBlockingSimPorts_abs"; }
+
   void Init_SIM(const char* name) {
     data_val = false;
     rdy_set_by_api = false;
@@ -1417,17 +1980,17 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
 #pragma design modulario < out >
   void receive(const bool& stall) {
     if (stall) {
-      this->rdy.write(false);
+      this->_RDYNAME_.write(false);
       rdy_set_by_api = false;
     } else {
-      this->rdy.write(true);
+      this->_RDYNAME_.write(true);
       rdy_set_by_api = true;
     }
   }
 
 #pragma design modulario < in >
   bool received(Message& data) {
-    if (this->val.read())
+    if (this->_VLDNAME_.read())
     {
     read_msg(data);
     return true;
@@ -1448,7 +2011,7 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
       return true;
     }
 #endif
-    if (rdy_set_by_api != this->rdy.read())
+    if (rdy_set_by_api != this->_RDYNAME_.read())
     {
         // something has changed the value of the signal not through API
         // killing spawned threads;
@@ -1462,13 +2025,21 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
     return true;
   }
 
+  bool PrePostReset() {
+      data_val = false;
+      return true;
+  }
+
 #ifdef __CONN_RAND_STALL_FEATURE
   bool Post() {
     if((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable())) {
       if (post_pacer->tic()) {
         if((local_rand_stall_print_debug_override ? local_rand_stall_print_debug_enable : get_rand_stall_print_debug_enable()) && (!pacer_stall)) {
-          std::string name = this->val.name();
-          if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
+          std::string name = this->_VLDNAME_.name();
+          std::string nameSuff = "_";
+          nameSuff += _VLDNAMESTR_;
+          unsigned int suffLen = nameSuff.length();
+          if(name.substr(name.length() - suffLen,suffLen) == nameSuff) { name.erase(name.length() - suffLen,suffLen); }
           if(actual_process_b) {
             CONNECTIONS_COUT("Entering random stall on port " << name << " in thread '" << actual_process_b->basename() << "'." << endl);
           } else {
@@ -1479,8 +2050,11 @@ class InBlocking_SimPorts_abs : public InBlocking_Ports_abs<Message> {
         pacer_stall=true;
       } else {
         if((local_rand_stall_print_debug_override ? local_rand_stall_print_debug_enable : get_rand_stall_print_debug_enable()) && (pacer_stall)) {
-          std::string name = this->val.name();
-          if(name.substr(name.length() - 4,4) == "_val") { name.erase(name.length() - 4,4); }
+          std::string name = this->_VLDNAME_.name();
+          std::string nameSuff = "_";
+          nameSuff += _VLDNAMESTR_;
+          unsigned int suffLen = nameSuff.length();
+          if(name.substr(name.length() - suffLen,suffLen) == nameSuff) { name.erase(name.length() - suffLen,suffLen); }
           if(actual_process_b) {
             CONNECTIONS_COUT("Exiting random stall on port " << name << " in thread '" << actual_process_b->basename() << "'. Was stalled for " << rand_stall_counter << " cycles." << endl);
           } else {
@@ -1564,15 +2138,16 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_in<MsgBits> msg;
+  sc_in<MsgBits> _DATNAME_;
 
   InBlocking() : InBlocking_Ports_abs<Message>(),
-                 msg(sc_gen_unique_name("in_msg")) {}
+                 _DATNAME_(sc_gen_unique_name(_DATNAMEINSTR_)) {}
   
   explicit InBlocking(const char* name) : InBlocking_Ports_abs<Message>(name),
-                                          msg(CONNECTIONS_CONCAT(name, "msg")) {}
+                                          _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {}
 
 // Pop
+#pragma builtin_modulario
 #pragma design modulario < in >
   Message Pop() {
     return InBlocking_Ports_abs<Message>::Pop();
@@ -1585,6 +2160,7 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
   }
 
 // PopNB
+#pragma builtin_modulario
 #pragma design modulario < in >
   bool PopNB(Message& data, const bool& do_wait = true) {
     return InBlocking_Ports_abs<Message>::PopNB(data, do_wait);
@@ -1592,16 +2168,16 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
 
   // Bind to InBlocking
   void Bind(InBlocking<Message, SYN_PORT>& rhs) {
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational
   void Bind(Combinational<Message, SYN_PORT>& rhs) {
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to InBlocking
@@ -1609,23 +2185,23 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational
   void Bind(Combinational<Message, MARSHALL_PORT>& rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->msg(rhs.out_msg);
-    this->val(rhs.out_val);
-    this->rdy(rhs.out_rdy);
+    this->_DATNAME_(rhs._DATNAMEOUT_);
+    this->_VLDNAME_(rhs._VLDNAMEOUT_);
+    this->_RDYNAME_(rhs._RDYNAMEOUT_);
     rhs.out_bound = true;
     rhs.out_ptr = this;
 #else
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
   
@@ -1635,33 +2211,33 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
     DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
     dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
-    dynamic_d2mport->msg(rhs.msg);
-    this->msg(dynamic_d2mport->msgbits);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
+    this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(dynamic_d2mport->msgbits);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(dynamic_d2mport->msgbits);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   void Bind(Combinational<Message, DIRECT_PORT>& rhs) {
     DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
     dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
-    this->msg(dynamic_d2mport->msgbits);
+    this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
-    dynamic_d2mport->msg(rhs.out_msg);
-    this->val(rhs.out_val);
-    this->rdy(rhs.out_rdy);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAMEOUT_);
+    this->_VLDNAME_(rhs._VLDNAMEOUT_);
+    this->_RDYNAME_(rhs._RDYNAMEOUT_);
     rhs.out_bound = true;
     rhs.out_ptr = this;
 #else
-    dynamic_d2mport->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -1675,9 +2251,9 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
 
     // Bind the marshaller to combinational
     this->Bind(*dynamic_comb);
-    dynamic_tlm2d_port->val(dynamic_comb->in_val);
-    dynamic_tlm2d_port->rdy(dynamic_comb->in_rdy);
-    dynamic_tlm2d_port->msg(dynamic_comb->in_msg);
+    dynamic_tlm2d_port->_VLDNAME_(dynamic_comb->_VLDNAMEIN_);
+    dynamic_tlm2d_port->_RDYNAME_(dynamic_comb->_RDYNAMEIN_);
+    dynamic_tlm2d_port->_DATNAME_(dynamic_comb->_DATNAMEIN_);
 
     // Bound but no ptr indicates a cosim interface
     dynamic_comb->in_bound = true;
@@ -1687,19 +2263,19 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
 
 #endif // __SYNTHESIS__
 
-#ifdef HLS_CATAPULT
+#ifdef __CCS_P2P_H
   // Bind to p2p<>::in
   void Bind(p2p<SYN>::in<Message>& rhs) {
-    this->msg(rhs.i_dat);
-    this->val(rhs.i_vld);
-    this->rdy(rhs.o_rdy);
+    this->_DATNAME_(rhs.i_dat);
+    this->_VLDNAME_(rhs.i_vld);
+    this->_RDYNAME_(rhs.o_rdy);
   }
 
   // Bind to p2p<>::chan
   void Bind(p2p<SYN>::chan<Message>& rhs) {
-    this->msg(rhs.dat);
-    this->val(rhs.vld);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs.dat);
+    this->_VLDNAME_(rhs.vld);
+    this->_RDYNAME_(rhs.rdy);
   }
 #endif
 
@@ -1711,7 +2287,7 @@ class InBlocking <Message, SYN_PORT> : public InBlocking_Ports_abs<Message> {
 
  protected:
   void read_msg(Message &m) {
-    MsgBits mbits = msg.read();
+    MsgBits mbits = _DATNAME_.read();
     Marshaller<WMessage::width> marshaller(mbits);
     WMessage result;
     result.Marshall(marshaller);
@@ -1727,7 +2303,7 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_in<MsgBits> msg;
+  sc_in<MsgBits> _DATNAME_;
 
 #ifdef CONNECTIONS_SIM_ONLY
   in_port_marker marker;
@@ -1735,14 +2311,14 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
 
 
   InBlocking() : InBlocking_SimPorts_abs<Message>(),
-    msg(sc_gen_unique_name("in_msg"))
+    _DATNAME_(sc_gen_unique_name(_DATNAMEINSTR_))
    {}
   
   explicit InBlocking(const char* name) : 
       InBlocking_SimPorts_abs<Message>(name)
-    , msg(CONNECTIONS_CONCAT(name, "msg"))
+    , _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
 #ifdef CONNECTIONS_SIM_ONLY
-    , marker(CONNECTIONS_CONCAT(name, "in_port_marker"), width, &(this->val), &(this->rdy), &msg)
+    , marker(CONNECTIONS_CONCAT(name, "in_port_marker"), width, &(this->_VLDNAME_), &(this->_RDYNAME_), &_DATNAME_)
 #endif
    {}
 
@@ -1774,39 +2350,39 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational
   void Bind(Combinational<Message, MARSHALL_PORT>& rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->msg(rhs.out_msg);
-    this->val(rhs.out_val);
-    this->rdy(rhs.out_rdy);
+    this->_DATNAME_(rhs._DATNAMEOUT_);
+    this->_VLDNAME_(rhs._VLDNAMEOUT_);
+    this->_RDYNAME_(rhs._RDYNAMEOUT_);
     rhs.out_bound = true;
     rhs.out_ptr = this;
     marker.top_port = true;
 #else
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
   // Bind to InBlocking
   void Bind(InBlocking<Message, SYN_PORT>& rhs) {
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational
   void Bind(Combinational<Message, SYN_PORT>& rhs) {
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
   
 // Be safe: disallow DIRECT_PORT <-> MARSHALL_PORT binding during HLS
@@ -1815,33 +2391,33 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
     DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
     dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
-    dynamic_d2mport->msg(rhs.msg);
-    this->msg(dynamic_d2mport->msgbits);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
+    this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(dynamic_d2mport->msgbits);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(dynamic_d2mport->msgbits);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   void Bind(Combinational<Message, DIRECT_PORT>& rhs) {
     DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
     dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
-    this->msg(dynamic_d2mport->msgbits);
+    this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
-    dynamic_d2mport->msg(rhs.out_msg);
-    this->val(rhs.out_val);
-    this->rdy(rhs.out_rdy);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAMEOUT_);
+    this->_VLDNAME_(rhs._VLDNAMEOUT_);
+    this->_RDYNAME_(rhs._RDYNAMEOUT_);
     rhs.out_bound = true;
     rhs.out_ptr = this;
 #else
-    dynamic_d2mport->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -1855,9 +2431,9 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
 
     // Bind the marshaller to combinational
     this->Bind(*dynamic_comb);
-    dynamic_tlm2d_port->val(dynamic_comb->in_val);
-    dynamic_tlm2d_port->rdy(dynamic_comb->in_rdy);
-    dynamic_tlm2d_port->msg(dynamic_comb->in_msg);
+    dynamic_tlm2d_port->_VLDNAME_(dynamic_comb->_VLDNAMEIN_);
+    dynamic_tlm2d_port->_RDYNAME_(dynamic_comb->_RDYNAMEIN_);
+    dynamic_tlm2d_port->_DATNAME_(dynamic_comb->_DATNAMEIN_);
 
     // Bound but no ptr indicates a cosim interface
     dynamic_comb->in_bound = true;
@@ -1867,19 +2443,19 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
 
 #endif // __SYNTHESIS__
   
-#ifdef HLS_CATAPULT
+#ifdef __CCS_P2P_H
   // Bind to p2p<>::in
   void Bind(p2p<SYN>::in<Message>& rhs) {
-    this->msg(rhs.i_dat);
-    this->val(rhs.i_vld);
-    this->rdy(rhs.o_rdy);
+    this->_DATNAME_(rhs.i_dat);
+    this->_VLDNAME_(rhs.i_vld);
+    this->_RDYNAME_(rhs.o_rdy);
   }
 
   // Bind to p2p<>::chan
   void Bind(p2p<SYN>::chan<Message>& rhs) {
-    this->msg(rhs.dat);
-    this->val(rhs.vld);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs.dat);
+    this->_VLDNAME_(rhs.vld);
+    this->_RDYNAME_(rhs.rdy);
   }
 #endif
 
@@ -1891,7 +2467,7 @@ class InBlocking <Message, MARSHALL_PORT> : public InBlocking_SimPorts_abs<Messa
 
  protected:
   void read_msg(Message &m) {
-    MsgBits mbits = msg.read();
+    MsgBits mbits = _DATNAME_.read();
     Marshaller<WMessage::width> marshaller(mbits);
     WMessage result;
     result.Marshall(marshaller);
@@ -1903,14 +2479,14 @@ template <typename Message>
 class InBlocking <Message, DIRECT_PORT> : public InBlocking_SimPorts_abs<Message> {
  public:
   // Interface
-  sc_in<Message> msg;
+  sc_in<Message> _DATNAME_;
 
  InBlocking() : InBlocking_SimPorts_abs<Message>(),
-    msg(sc_gen_unique_name("in_msg"))
+    _DATNAME_(sc_gen_unique_name(_DATNAMEINSTR_))
       {}
   
   explicit InBlocking(const char* name) : InBlocking_SimPorts_abs<Message>(name),
-    msg(CONNECTIONS_CONCAT(name, "msg"))
+    _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
       {}
   
   // Reset read
@@ -1941,23 +2517,23 @@ class InBlocking <Message, DIRECT_PORT> : public InBlocking_SimPorts_abs<Message
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational
   void Bind(Combinational<Message, DIRECT_PORT>& rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->msg(rhs.out_msg);
-    this->val(rhs.out_val);
-    this->rdy(rhs.out_rdy);
+    this->_DATNAME_(rhs._DATNAMEOUT_);
+    this->_VLDNAME_(rhs._VLDNAMEOUT_);
+    this->_RDYNAME_(rhs._RDYNAMEOUT_);
     rhs.out_bound = true;
     rhs.out_ptr = this;
 #else
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -1969,7 +2545,7 @@ class InBlocking <Message, DIRECT_PORT> : public InBlocking_SimPorts_abs<Message
   
  protected:
   void read_msg(Message &m) {
-    m = msg.read();
+    m = _DATNAME_.read();
   }
 };  
 
@@ -2003,10 +2579,17 @@ class InBlocking <Message, TLM_PORT> : public InBlocking_abs<Message> {
     while (i_fifo->nb_get(temp));
   }
 
+  void do_reset_check() {
+    this->read_reset_check.check();
+  }
+
 // Pop
 #pragma design modulario < in >
   Message Pop() {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
 #ifdef __CONN_RAND_STALL_FEATURE
     while((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable()) && post_pacer->tic()) { wait(); }
 #endif
@@ -2016,14 +2599,20 @@ class InBlocking <Message, TLM_PORT> : public InBlocking_abs<Message> {
 // Peek
 #pragma design modulario < in >
   Message Peek() {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return i_fifo->peek();
   }
 
 // PopNB
 #pragma design modulario < in >
   bool PopNB(Message& data, const bool& do_wait = true) {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
 #ifdef __CONN_RAND_STALL_FEATURE
     if((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable()) && post_pacer->tic()) { return false; }
 #endif
@@ -2118,7 +2707,7 @@ class In<Message, SYN_PORT> : public InBlocking<Message, SYN_PORT> {
   // Empty
   bool Empty() {
     QUERY_CALL();
-    return !this->val.read();
+    return !this->_VLDNAME_.read();
   }
 };
 
@@ -2135,7 +2724,7 @@ class In<Message, MARSHALL_PORT> : public InBlocking<Message, MARSHALL_PORT> {
     return this->Empty_SIM();
 #else
     QUERY_CALL();
-    return !this->val.read();
+    return !this->_VLDNAME_.read();
 #endif
   }
 };
@@ -2153,7 +2742,7 @@ class In<Message, DIRECT_PORT> : public InBlocking<Message, DIRECT_PORT> {
     return this->Empty_SIM();
 #else
     QUERY_CALL();
-    return !this->val.read();
+    return !this->_VLDNAME_.read();
 #endif
   }
 };
@@ -2237,30 +2826,30 @@ template <typename Message>
 class OutBlocking_Ports_abs : public OutBlocking_abs<Message> {
  public:
   // Interface
-  sc_out<bool> val;
-  sc_in<bool> rdy;
+  sc_out<bool> _VLDNAME_;
+  sc_in<bool> _RDYNAME_;
 
   // Protected because abstract class
  protected:
   // Default constructor
  OutBlocking_Ports_abs()
    : OutBlocking_abs<Message>(),
-    val(sc_gen_unique_name("out_val")),
-    rdy(sc_gen_unique_name("out_rdy"))
+    _VLDNAME_(sc_gen_unique_name(_VLDNAMEOUTSTR_)),
+    _RDYNAME_(sc_gen_unique_name(_RDYNAMEOUTSTR_))
       {
 #ifndef __SYNTHESIS__
-        this->write_reset_check.set_val_name(val.name());
+        this->write_reset_check.set_val_name(_VLDNAME_.name());
 #endif
       }
   
   // Constructor
   explicit OutBlocking_Ports_abs(const char* name)
     : OutBlocking_abs<Message>(name),
-    val(CONNECTIONS_CONCAT(name, "val")),
-    rdy(CONNECTIONS_CONCAT(name, "rdy"))
+    _VLDNAME_(CONNECTIONS_CONCAT(name, _VLDNAMESTR_)),
+    _RDYNAME_(CONNECTIONS_CONCAT(name, _RDYNAMESTR_))
       {
 #ifndef __SYNTHESIS__
-        this->write_reset_check.set_val_name(val.name());
+        this->write_reset_check.set_val_name(_VLDNAME_.name());
 #endif
       }
   
@@ -2269,32 +2858,45 @@ class OutBlocking_Ports_abs : public OutBlocking_abs<Message> {
   // Reset write
   void Reset() {
     this->write_reset_check.reset();
-    val.write(false);
+    _VLDNAME_.write(false);
     reset_msg();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_conManager().add_clock_event(this);
+#endif
+  }
+
+  void do_reset_check() {
+    this->write_reset_check.check();
   }
 
 // Push
 #pragma design modulario < out >
   void Push(const Message& m) {
-    this->write_reset_check.check();
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     do {
-      val.write(true);
+      _VLDNAME_.write(true);
       write_msg(m);
       wait();
-    } while (rdy.read() != true);
-    val.write(false);
+    } while (_RDYNAME_.read() != true);
+    _VLDNAME_.write(false);
   }
 
 // PushNB
 #pragma design modulario < out >
   bool PushNB(const Message& m, const bool& do_wait = true) {
-    this->write_reset_check.check();
-    val.write(true);
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+    _VLDNAME_.write(true);
     write_msg(m);
     wait();
-    val.write(false);
+    _VLDNAME_.write(false);
     invalidate_msg();
-    return rdy.read();
+    return _RDYNAME_.read();
   }
 
  protected:
@@ -2341,16 +2943,24 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
 #ifdef CONNECTIONS_SIM_ONLY
     this->write_reset_check.reset();
     Reset_SIM();
+    get_conManager().add_clock_event(this);
 #else
     OutBlocking_Ports_abs<Message>::Reset();
 #endif
+  }
+
+  void do_reset_check() {
+    this->write_reset_check.check();
   }
 
   // Push
 #pragma design modulario < out >
   void Push(const Message& m) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->write_reset_check.check();
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return Push_SIM(m);
 #else
     OutBlocking_Ports_abs<Message>::Push(m);
@@ -2361,7 +2971,10 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
 #pragma design modulario < out >
   bool PushNB(const Message& m, const bool& do_wait = true) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->write_reset_check.check();
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     if (Full_SIM()) {
       return false;
     } else {
@@ -2390,6 +3003,8 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
     get_conManager().add(this);
   }
 
+  std::string full_name() { return "Out_Blocking_SimPorts_abs"; }
+
   void Reset_SIM() {
     this->reset_msg();
     data_val = false;
@@ -2400,7 +3015,7 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
 // Keep mudulario pragmas here to preserve that option
 
 #pragma design modulario < in >
-  bool transmitted() { return this->rdy.read(); }
+  bool transmitted() { return this->_RDYNAME_.read(); }
 
 #pragma design modulario < out >
   void transmit_data(const Message& m) {
@@ -2410,10 +3025,10 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
 #pragma design modulario < out >
   void transmit_val(const bool& vald) {
     if (vald) {
-      this->val.write(true);
+      this->_VLDNAME_.write(true);
       val_set_by_api = true;
     } else {
-      this->val.write(false);
+      this->_VLDNAME_.write(false);
       val_set_by_api = false;
 
       //corrupt and transmit data
@@ -2431,8 +3046,13 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
     return true;
   }
 
+  bool PrePostReset() {
+    data_val = false;
+    return true;
+  }
+
   bool Post() { 
-    if (val_set_by_api != this->val.read())
+    if (val_set_by_api != this->_VLDNAME_.read())
     {
         // something has changed the value of the signal not through API
         // killing spawned threads;
@@ -2459,7 +3079,7 @@ class OutBlocking_SimPorts_abs : public OutBlocking_Ports_abs<Message> {
     }
     FillBuf_SIM(m);
   }
-#endif
+#endif //CONNECTIONS_SIM_ONLY
 };
 
  
@@ -2475,15 +3095,15 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_out<MsgBits> msg;
+  sc_out<MsgBits> _DATNAME_;
 
 
   OutBlocking() : OutBlocking_Ports_abs<Message>(),
-                 msg(sc_gen_unique_name("out_msg")) {}
+                 _DATNAME_(sc_gen_unique_name(_DATNAMEOUTSTR_)) {}
   
   explicit OutBlocking(const char* name) : 
       OutBlocking_Ports_abs<Message>(name)
-    , msg(CONNECTIONS_CONCAT(name, "msg"))
+    , _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
    {}
 
   // Reset write
@@ -2492,12 +3112,14 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
   }
   
   // Push
+#pragma builtin_modulario
 #pragma design modulario < out >
   void Push(const Message& m) {
     OutBlocking_Ports_abs<Message>::Push(m);
   }
 
   // PushNB
+#pragma builtin_modulario
 #pragma design modulario < out >
   bool PushNB(const Message& m, const bool& do_wait = true) {
     return OutBlocking_Ports_abs<Message>::PushNB(m,do_wait);
@@ -2505,16 +3127,16 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
 
   // Bind to OutBlocking
   void Bind(OutBlocking<Message, SYN_PORT>& rhs) {
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational Marshall Port
   void Bind(Combinational<Message, SYN_PORT>& rhs) {
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
   
   // Bind to OutBlocking
@@ -2522,23 +3144,23 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational Marshall Port
   void Bind(Combinational<Message, MARSHALL_PORT>& rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->msg(rhs.in_msg);
-    this->val(rhs.in_val);
-    this->rdy(rhs.in_rdy);
+    this->_DATNAME_(rhs._DATNAMEIN_);
+    this->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_RDYNAME_(rhs._RDYNAMEIN_);
     rhs.in_bound = true;
     rhs.in_ptr = this;
 #else
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -2552,31 +3174,31 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
     rhs.disable_spawn();
 #endif
     
-    this->msg(dynamic_m2dport->msgbits);
-    dynamic_m2dport->msg(rhs.msg);
-    dynamic_m2dport->val(rhs.val);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(dynamic_m2dport->msgbits);
+    dynamic_m2dport->_DATNAME_(rhs._DATNAME_);
+    dynamic_m2dport->_VLDNAME_(rhs._VLDNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   void Bind(Combinational<Message, DIRECT_PORT>& rhs) {
     MarshalledToDirectOutPort<Message> *dynamic_m2dport;
 
     dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
-    this->msg(dynamic_m2dport->msgbits);
+    this->_DATNAME_(dynamic_m2dport->msgbits);
     
 #ifdef CONNECTIONS_SIM_ONLY
-    dynamic_m2dport->msg(rhs.in_msg);
-    dynamic_m2dport->val(rhs.in_val);
-    this->val(rhs.in_val);
-    this->rdy(rhs.in_rdy);
+    dynamic_m2dport->_DATNAME_(rhs._DATNAMEIN_);
+    dynamic_m2dport->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_RDYNAME_(rhs._RDYNAMEIN_);
     rhs.in_bound = true;
     rhs.in_ptr = this;
 #else
-    dynamic_m2dport->msg(rhs.msg);
-    dynamic_m2dport->val(rhs.val);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    dynamic_m2dport->_DATNAME_(rhs._DATNAME_);
+    dynamic_m2dport->_VLDNAME_(rhs._VLDNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -2590,9 +3212,9 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
 
     // Bind the marshaller to combinational
     this->Bind(*dynamic_comb);
-    dynamic_d2tlm_port->val(dynamic_comb->out_val);
-    dynamic_d2tlm_port->rdy(dynamic_comb->out_rdy);
-    dynamic_d2tlm_port->msg(dynamic_comb->out_msg);
+    dynamic_d2tlm_port->_VLDNAME_(dynamic_comb->_VLDNAMEOUT_);
+    dynamic_d2tlm_port->_RDYNAME_(dynamic_comb->_RDYNAMEOUT_);
+    dynamic_d2tlm_port->_DATNAME_(dynamic_comb->_DATNAMEOUT_);
     
     // Bound but no ptr indicates a cosim interface
     dynamic_comb->out_bound = true;
@@ -2603,19 +3225,19 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
 
 #endif // __SYNTHESIS__
 
-#ifdef HLS_CATAPULT
+#ifdef __CCS_P2P_H
   // Bind to p2p<>::out
   void Bind(p2p<SYN>::out<Message>& rhs) {
-    this->msg(rhs.o_dat);
-    this->val(rhs.o_vld);
-    this->rdy(rhs.i_rdy);
+    this->_DATNAME_(rhs.o_dat);
+    this->_VLDNAME_(rhs.o_vld);
+    this->_RDYNAME_(rhs.i_rdy);
   }
 
   // Bind to p2p<>::chan
   void Bind(p2p<SYN>::chan<Message>& rhs) {
-    this->msg(rhs.dat);
-    this->val(rhs.vld);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs.dat);
+    this->_VLDNAME_(rhs.vld);
+    this->_RDYNAME_(rhs.rdy);
   }
 #endif
 
@@ -2627,7 +3249,7 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
   
  protected:
   void reset_msg() {
-    msg.write(0);
+    _DATNAME_.write(0);
   }
   
   void write_msg(const Message &m) {
@@ -2635,7 +3257,7 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
     WMessage wm(m);
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
-    msg.write(bits);
+    _DATNAME_.write(bits);
   }
 
   void invalidate_msg() {
@@ -2644,7 +3266,7 @@ class OutBlocking <Message, SYN_PORT> : public OutBlocking_Ports_abs<Message> {
     // HLS for x-prop.
 #ifndef SLEC_CPC    
     MsgBits dc_bits;
-    msg.write(dc_bits);
+    _DATNAME_.write(dc_bits);
 #endif
   }
 };  
@@ -2658,14 +3280,14 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_out<MsgBits> msg;
+  sc_out<MsgBits> _DATNAME_;
 #ifdef CONNECTIONS_SIM_ONLY
   out_port_marker marker;
   OutBlocking<Message, MARSHALL_PORT>* driver;
 #endif
 
   OutBlocking() : OutBlocking_SimPorts_abs<Message>(),
-    msg(sc_gen_unique_name("out_msg"))
+    _DATNAME_(sc_gen_unique_name(_DATNAMEOUTSTR_))
 #ifdef CONNECTIONS_SIM_ONLY
     , driver(0)
     , log_stream(0)
@@ -2674,9 +3296,9 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
   
   explicit OutBlocking(const char* name) 
     : OutBlocking_SimPorts_abs<Message>(name)
-    , msg(CONNECTIONS_CONCAT(name, "msg"))
+    , _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
 #ifdef CONNECTIONS_SIM_ONLY
-    , marker(CONNECTIONS_CONCAT(name, "out_port_marker"), width, &(this->val), &(this->rdy), &msg)
+    , marker(CONNECTIONS_CONCAT(name, "out_port_marker"), width, &(this->_VLDNAME_), &(this->_RDYNAME_), &_DATNAME_)
     , driver(0)
     , log_stream(0)
 #endif
@@ -2705,25 +3327,25 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     rhs.disable_spawn();
     rhs.driver = this;
 #endif
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   // Bind to Combinational Marshall Port
   void Bind(Combinational<Message, MARSHALL_PORT>& rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->msg(rhs.in_msg);
-    this->val(rhs.in_val);
-    this->rdy(rhs.in_rdy);
+    this->_DATNAME_(rhs._DATNAMEIN_);
+    this->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_RDYNAME_(rhs._RDYNAMEIN_);
     rhs.driver = this;
     rhs.in_bound = true;
     rhs.in_ptr = this;
     marker.top_port = true;
 #else
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -2737,31 +3359,31 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     rhs.disable_spawn();
 #endif
     
-    this->msg(dynamic_m2dport->msgbits);
-    dynamic_m2dport->msg(rhs.msg);
-    dynamic_m2dport->val(rhs.val);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(dynamic_m2dport->msgbits);
+    dynamic_m2dport->_DATNAME_(rhs._DATNAME_);
+    dynamic_m2dport->_VLDNAME_(rhs._VLDNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   void Bind(Combinational<Message, DIRECT_PORT>& rhs) {
     MarshalledToDirectOutPort<Message> *dynamic_m2dport;
 
     dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
-    this->msg(dynamic_m2dport->msgbits);
+    this->_DATNAME_(dynamic_m2dport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
-    dynamic_m2dport->msg(rhs.in_msg);
-    dynamic_m2dport->val(rhs.in_val);
-    this->val(rhs.in_val);
-    this->rdy(rhs.in_rdy);
+    dynamic_m2dport->_DATNAME_(rhs._DATNAMEIN_);
+    dynamic_m2dport->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_RDYNAME_(rhs._RDYNAMEIN_);
     rhs.in_bound = true;
     rhs.in_ptr = this;
 #else
-    dynamic_m2dport->msg(rhs.msg);
-    dynamic_m2dport->val(rhs.val);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    dynamic_m2dport->_DATNAME_(rhs._DATNAME_);
+    dynamic_m2dport->_VLDNAME_(rhs._VLDNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -2775,9 +3397,9 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
 
     // Bind the marshaller to combinational
     this->Bind(*dynamic_comb);
-    dynamic_d2tlm_port->val(dynamic_comb->out_val);
-    dynamic_d2tlm_port->rdy(dynamic_comb->out_rdy);
-    dynamic_d2tlm_port->msg(dynamic_comb->out_msg);
+    dynamic_d2tlm_port->_VLDNAME_(dynamic_comb->_VLDNAMEOUT_);
+    dynamic_d2tlm_port->_RDYNAME_(dynamic_comb->_RDYNAMEOUT_);
+    dynamic_d2tlm_port->_DATNAME_(dynamic_comb->_DATNAMEOUT_);
     
     // Bound but no ptr indicates a cosim interface
     dynamic_comb->out_bound = true;
@@ -2796,7 +3418,7 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
   
  protected:
   void reset_msg() {
-    msg.write(0);
+    _DATNAME_.write(0);
   }
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -2811,7 +3433,7 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     WMessage wm(m);
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
-    msg.write(bits);
+    _DATNAME_.write(bits);
 
 #ifdef CONNECTIONS_SIM_ONLY
     if (log_stream)
@@ -2825,7 +3447,7 @@ class OutBlocking <Message, MARSHALL_PORT> : public OutBlocking_SimPorts_abs<Mes
     // HLS for x-prop.
 #ifndef SLEC_CPC    
     MsgBits dc_bits;
-    msg.write(dc_bits);
+    _DATNAME_.write(dc_bits);
 #endif
   }
 
@@ -2851,14 +3473,14 @@ template <typename Message>
 class OutBlocking <Message, DIRECT_PORT> : public OutBlocking_SimPorts_abs<Message> {
  public:
   // Interface
-  sc_out<Message> msg;
+  sc_out<Message> _DATNAME_;
 
  OutBlocking() : OutBlocking_SimPorts_abs<Message>(),
-    msg(sc_gen_unique_name("out_msg"))
+    _DATNAME_(sc_gen_unique_name(_DATNAMEOUTSTR_))
       {}
   
   explicit OutBlocking(const char* name) : OutBlocking_SimPorts_abs<Message>(name),
-    msg(CONNECTIONS_CONCAT(name, "msg"))
+    _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
       {}
   
   // Reset write
@@ -2883,23 +3505,23 @@ class OutBlocking <Message, DIRECT_PORT> : public OutBlocking_SimPorts_abs<Messa
 #ifdef CONNECTIONS_SIM_ONLY
     rhs.disable_spawn();
 #endif
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
   
   // Bind to Combinational
   void Bind(Combinational<Message, DIRECT_PORT>& rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
-    this->msg(rhs.in_msg);
-    this->val(rhs.in_val);
-    this->rdy(rhs.in_rdy);
+    this->_DATNAME_(rhs._DATNAMEIN_);
+    this->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_RDYNAME_(rhs._RDYNAMEIN_);
     rhs.in_bound = true;
     rhs.in_ptr = this;
 #else
-    this->msg(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 
@@ -2913,30 +3535,30 @@ class OutBlocking <Message, DIRECT_PORT> : public OutBlocking_SimPorts_abs<Messa
     rhs.disable_spawn();
 #endif
     
-    this->msg(dynamic_d2mport->msg);
-    dynamic_d2mport->msgbits(rhs.msg);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    this->_DATNAME_(dynamic_d2mport->_DATNAME_);
+    dynamic_d2mport->msgbits(rhs._DATNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
   }
 
   void Bind(Combinational<Message, MARSHALL_PORT>& rhs) {
     DirectToMarshalledOutPort<Message> *dynamic_d2mport;
 
     dynamic_d2mport = new DirectToMarshalledOutPort<Message>("dynamic_d2mport");
-    this->msg(dynamic_d2mport->msg);
+    this->_DATNAME_(dynamic_d2mport->_DATNAME_);
 
 #ifdef CONNECTIONS_SIM_ONLY
-    dynamic_d2mport->msg(rhs.in_msg);
-    dynamic_d2mport->val(rhs.in_val);
-    this->val(rhs.in_val);
-    this->rdy(rhs.in_rdy);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAMEIN_);
+    dynamic_d2mport->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_VLDNAME_(rhs._VLDNAMEIN_);
+    this->_RDYNAME_(rhs._RDYNAMEIN_);
     rhs.in_bound = true;
     rhs.in_ptr = this;
 #else
-    dynamic_d2mport->msg(rhs.msg);
-    dynamic_d2mport->val(rhs.val);
-    this->val(rhs.val);
-    this->rdy(rhs.rdy);
+    dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
+    dynamic_d2mport->_VLDNAME_(rhs._VLDNAME_);
+    this->_VLDNAME_(rhs._VLDNAME_);
+    this->_RDYNAME_(rhs._RDYNAME_);
 #endif
   }
 #endif // __SYNTHESIS__
@@ -2950,16 +3572,16 @@ class OutBlocking <Message, DIRECT_PORT> : public OutBlocking_SimPorts_abs<Messa
  protected:
   void reset_msg() {
     Message dc;
-    msg.write(dc);
+    _DATNAME_.write(dc);
   }
   
   void write_msg(const Message &m) {
-    msg.write(m);
+    _DATNAME_.write(m);
   }
 
   void invalidate_msg() {
       Message dc;
-      msg.write(dc);
+      _DATNAME_.write(dc);
   }
 };  
 
@@ -2982,10 +3604,17 @@ class OutBlocking <Message, TLM_PORT> : public OutBlocking_abs<Message> {
     this->write_reset_check.reset();
   }
 
+  void do_reset_check() {
+    this->write_reset_check.check();
+  }
+
 // Push
 #pragma design modulario < out >
   void Push(const Message& m) {
-    this->write_reset_check.check();
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     o_fifo->put(m);
     wait(sc_core::SC_ZERO_TIME);
   }
@@ -2993,7 +3622,10 @@ class OutBlocking <Message, TLM_PORT> : public OutBlocking_abs<Message> {
 // PushNB
 #pragma design modulario < out >
   bool PushNB(const Message& m, const bool& do_wait = true) {
-    this->write_reset_check.check();
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return o_fifo->nb_put(m);
   }
 
@@ -3016,7 +3648,7 @@ class OutBlocking <Message, TLM_PORT> : public OutBlocking_abs<Message> {
  protected:
   sc_port<tlm::tlm_fifo_put_if<Message> > o_fifo;
 };
-#endif
+#endif //CONNECTIONS_SIM_ONLY
 
  
 //------------------------------------------------------------------------
@@ -3033,7 +3665,7 @@ class Out<Message, SYN_PORT> : public OutBlocking<Message, SYN_PORT> {
   // Full
   bool Full() {
     QUERY_CALL();
-    return !this->rdy.read();
+    return !this->_RDYNAME_.read();
   }
 };
 
@@ -3051,7 +3683,7 @@ class Out<Message, MARSHALL_PORT> : public OutBlocking<Message, MARSHALL_PORT> {
     return this->Full_SIM();
 #else
     QUERY_CALL();
-    return !this->rdy.read();
+    return !this->_RDYNAME_.read();
 #endif
   }
 };
@@ -3070,7 +3702,7 @@ class Out<Message, DIRECT_PORT> : public OutBlocking<Message, DIRECT_PORT> {
     return this->Full_SIM();
 #else
     QUERY_CALL();
-    return !this->rdy.read();
+    return !this->_RDYNAME_.read();
 #endif
   }
 };
@@ -3210,32 +3842,32 @@ template <typename Message>
 class Combinational_Ports_abs : public Combinational_abs<Message> {
  public:
   // Interface
-  sc_signal<bool> val;
-  sc_signal<bool> rdy;
+  sc_signal<bool> _VLDNAME_;
+  sc_signal<bool> _RDYNAME_;
 
   // Abstract class
  protected:
   // Default constructor
   Combinational_Ports_abs()
     : Combinational_abs<Message>(),
-    val(sc_gen_unique_name("comb_val")),
-    rdy(sc_gen_unique_name("comb_rdy"))
+    _VLDNAME_(sc_gen_unique_name(_COMBVLDNAMESTR_)),
+    _RDYNAME_(sc_gen_unique_name(_COMBRDYNAMESTR_))
       {
 #ifndef __SYNTHESIS__
-        this->read_reset_check.set_val_name(val.name());
-        this->write_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(_VLDNAME_.name());
+        this->write_reset_check.set_val_name(_VLDNAME_.name());
 #endif
       }
 
   // Constructor
   explicit Combinational_Ports_abs(const char* name)
     : Combinational_abs<Message>(name),
-    val(CONNECTIONS_CONCAT(name, "val")),
-    rdy(CONNECTIONS_CONCAT(name, "rdy")) 
+    _VLDNAME_(CONNECTIONS_CONCAT(name, _VLDNAMESTR_)),
+    _RDYNAME_(CONNECTIONS_CONCAT(name, _RDYNAMESTR_)) 
       {
 #ifndef __SYNTHESIS__
-        this->read_reset_check.set_val_name(val.name());
-        this->write_reset_check.set_val_name(val.name());
+        this->read_reset_check.set_val_name(_VLDNAME_.name());
+        this->write_reset_check.set_val_name(_VLDNAME_.name());
 #endif
       }
 
@@ -3243,24 +3875,32 @@ class Combinational_Ports_abs : public Combinational_abs<Message> {
   // Reset
   void ResetRead() {
     this->read_reset_check.reset();
-    rdy.write(false); 
+    _RDYNAME_.write(false); 
   }
 
   void ResetWrite() {
     this->write_reset_check.reset();
-    val.write(false);
+    _VLDNAME_.write(false);
     reset_msg();
+  }
+
+  void do_reset_check() {
+    this->read_reset_check.check();
+    this->write_reset_check.check();
   }
 
 // Pop
 #pragma design modulario < in >
   Message Pop() {
-    this->read_reset_check.check();
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     do {
-      rdy.write(true);
+      _RDYNAME_.write(true);
       wait();
-    } while (val.read() != true);
-    rdy.write(false);
+    } while (_VLDNAME_.read() != true);
+    _RDYNAME_.write(false);
     Message m;
     read_msg(m);
     return m;
@@ -3269,8 +3909,11 @@ class Combinational_Ports_abs : public Combinational_abs<Message> {
 // Peek
 #pragma design modulario < in >
   Message Peek() {
-    this->read_reset_check.check();
-    while (!val.read()) {
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+    while (!_VLDNAME_.read()) {
       wait();
     }
     Message m;
@@ -3281,12 +3924,15 @@ class Combinational_Ports_abs : public Combinational_abs<Message> {
 // PopNB
 #pragma design modulario < in >
   bool PopNB(Message& data) {
-    this->read_reset_check.check();
-    rdy.write(true);
+    // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+    _RDYNAME_.write(true);
     wait();
-    rdy.write(false);
+    _RDYNAME_.write(false);
     read_msg(data);
-    return val.read();
+    return _VLDNAME_.read();
   }
 
 // ekrimer: commenting these out, should really be EmptyWrite and EmptyRead, and in anycase will not work in verilog currently
@@ -3296,24 +3942,30 @@ class Combinational_Ports_abs : public Combinational_abs<Message> {
 // Push
 #pragma design modulario < out >
   void Push(const Message& m) {
-    this->write_reset_check.check();
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     do {
-      val.write(true);
+      _VLDNAME_.write(true);
       write_msg(m);
       wait();
-    } while (rdy.read() != true);
-    val.write(false);
+    } while (_RDYNAME_.read() != true);
+    _VLDNAME_.write(false);
   }
 
 // PushNB
 #pragma design modulario < out >
   bool PushNB(const Message& m) {
-    this->write_reset_check.check();
-    val.write(true);
+    // this->write_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+    _VLDNAME_.write(true);
     write_msg(m);
     wait();
-    val.write(false);
-    return rdy.read();
+    _VLDNAME_.write(false);
+    return _RDYNAME_.read();
   }
 
 // ekrimer: commenting out, similar to Empty
@@ -3360,11 +4012,11 @@ class Combinational_SimPorts_abs
     , Connections_BA_abs(sc_gen_unique_name("comb_ba"))
     
     //, in_msg(sc_gen_unique_name("comb_in_msg"))
-    , in_val(sc_gen_unique_name("comb_in_val"))
-    , in_rdy(sc_gen_unique_name("comb_in_rdy"))
+    , _VLDNAMEIN_(sc_gen_unique_name(_COMBVLDNAMEINSTR_))
+    , _RDYNAMEIN_(sc_gen_unique_name(_COMBRDYNAMEINSTR_))
     //, out_msg(sc_gen_unique_name("comb_out_msg"))
-    , out_val(sc_gen_unique_name("comb_out_val"))
-    , out_rdy(sc_gen_unique_name("comb_out_rdy"))
+    , _VLDNAMEOUT_(sc_gen_unique_name(_COMBVLDNAMEOUTSTR_))
+    , _RDYNAMEOUT_(sc_gen_unique_name(_COMBRDYNAMEOUTSTR_))
     
     , current_cycle(0)
     , latency(0)
@@ -3389,11 +4041,11 @@ class Combinational_SimPorts_abs
     , Connections_BA_abs(CONNECTIONS_CONCAT(name, "comb_BA"))
     
     //, in_msg(CONNECTIONS_CONCAT(name, "comb_in_msg"))
-    , in_val(CONNECTIONS_CONCAT(name, "comb_in_val"))
-    , in_rdy(CONNECTIONS_CONCAT(name, "comb_in_rdy"))
+    , _VLDNAMEIN_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBVLDNAMEINSTR_)))
+    , _RDYNAMEIN_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBRDYNAMEINSTR_)))
     //, out_msg(CONNECTIONS_CONCAT(name, "comb_out_msg"))
-    , out_val(CONNECTIONS_CONCAT(name, "comb_out_val"))
-    , out_rdy(CONNECTIONS_CONCAT(name, "comb_out_rdy"))
+    , _VLDNAMEOUT_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBVLDNAMEOUTSTR_)))
+    , _RDYNAMEOUT_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBRDYNAMEOUTSTR_)))
     
     , current_cycle(0)
     , latency(0)
@@ -3409,16 +4061,18 @@ class Combinational_SimPorts_abs
       Init_SIM("comb");
 #endif  
     }
+
+    std::string full_name() { return "Combinational_SimPorts_abs"; }
   
  public:
   
 #ifdef CONNECTIONS_SIM_ONLY
   //sc_signal<MsgBits> in_msg;
-  sc_signal<bool>    in_val;
-  sc_signal<bool>    in_rdy;
+  sc_signal<bool>     _VLDNAMEIN_;
+  sc_signal<bool>     _RDYNAMEIN_;
   //sc_signal<MsgBits> out_msg;
-  sc_signal<bool>    out_val;
-  sc_signal<bool>    out_rdy;
+  sc_signal<bool>    _VLDNAMEOUT_;
+  sc_signal<bool>    _RDYNAMEOUT_;
   unsigned long current_cycle;
   unsigned long latency;
   tlm::circular_buffer< BA_Message<Message> > b;
@@ -3430,6 +4084,7 @@ class Combinational_SimPorts_abs
     /* assert(! out_bound); */
 
     this->read_reset_check.reset();
+    get_conManager().add_clock_event(this);
     
     sim_in.Reset();
     Reset_SIM();
@@ -3443,6 +4098,7 @@ class Combinational_SimPorts_abs
     /* assert(! in_bound); */
 
     this->write_reset_check.reset();
+    get_conManager().add_clock_event(this);
     
     sim_out.Reset();
     
@@ -3452,6 +4108,24 @@ class Combinational_SimPorts_abs
 #endif
   }
 
+  void do_reset_check() {
+/*
+    this->read_reset_check.check();
+    this->write_reset_check.check();
+*/
+/*
+    Combinational_SimPorts_abs needs special handling for registration with ConManager.
+    This is because it is possible to do Push/Pop thru regular instantiated In and Out
+    Ports, and also possible to do direct Push/Pop on the channel itself (ie "portless
+    channel access"). The only way the simulator knows if the latter is occurring is when
+    the ResetWrite and ResetRead and Push Pop methods are called on the channel itself.
+    The implications are that the reset_check.check() method needs to be done in the Push/Pop
+    methods (cannot be done in do_reset_check()), and add_clock_event may or may not have 
+    been called, even though get_conManager().add() method is always called for this channel.
+    So, in ConManager if we see that add_clock_event was not called for this class, it is OK.
+*/
+  }
+
 // Pop
 #pragma design modulario < in >
   Message Pop() {
@@ -3459,6 +4133,9 @@ class Combinational_SimPorts_abs
     /* assert(! out_bound); */
     
     this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
 
     return sim_in.Pop();
 #else
@@ -3473,6 +4150,9 @@ class Combinational_SimPorts_abs
     /* assert(! out_bound); */
     
     this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
 
     return sim_in.Peek();
 #else
@@ -3487,6 +4167,9 @@ class Combinational_SimPorts_abs
     /* assert(! out_bound); */
     
     this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
 
     return sim_in.PopNB(data);
 #else
@@ -3509,6 +4192,9 @@ class Combinational_SimPorts_abs
     /* assert(! in_bound); */
     
     this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     traced_msg = m;
 
     sim_out.Push(m);
@@ -3524,6 +4210,9 @@ class Combinational_SimPorts_abs
     /* assert(! in_bound); */
     
     this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
 
     return sim_out.PushNB(m);
 #else
@@ -3556,6 +4245,8 @@ class Combinational_SimPorts_abs
     } else {
       this->b.resize(1);
     }
+
+    this->sibling_port = in_ptr;
   }
 
   void disable_annotate() {
@@ -3567,7 +4258,7 @@ class Combinational_SimPorts_abs
       return in_str;
     } else if(in_bound) {
       if(in_ptr)
-        return in_ptr->val.name();
+        return in_ptr->_VLDNAME_.name();
       else
         return "TLM_INTERFACE";
     } else {
@@ -3580,7 +4271,7 @@ class Combinational_SimPorts_abs
       return out_str;
     } else if(out_bound) {
       if(out_ptr)
-        return out_ptr->val.name();
+        return out_ptr->_VLDNAME_.name();
       else
         return "TLM_INTERFACE";
     } else {
@@ -3645,17 +4336,17 @@ class Combinational_SimPorts_abs
 #pragma design modulario < out >
   void receive(const bool& stall) {
     if (stall) {
-      in_rdy.write(false);
+      _RDYNAMEIN_.write(false);
       rdy_set_by_api = false;
     } else {
-      in_rdy.write(true);
+      _RDYNAMEIN_.write(true);
       rdy_set_by_api = true;
     }
   }
 
 #pragma design modulario < in >
   bool received(Message& data) {
-    if (in_val.read())
+    if (_VLDNAMEIN_.read())
     {
       /* MsgBits mbits = in_msg.read(); */
       /* Marshaller<WMessage::width> marshaller(mbits); */
@@ -3675,7 +4366,7 @@ class Combinational_SimPorts_abs
   }
   
 #pragma design modulario < in >
-  bool transmitted() { return out_rdy.read(); }
+  bool transmitted() { return _RDYNAMEOUT_.read(); }
 
 
 
@@ -3692,10 +4383,10 @@ class Combinational_SimPorts_abs
 #pragma design modulario < out >
   void transmit_val(const bool& vald) {
     if (vald) {
-      out_val.write(true);
+      _VLDNAMEOUT_.write(true);
       val_set_by_api = true;
     } else {
-      out_val.write(false);
+      _VLDNAMEOUT_.write(false);
       val_set_by_api = false;
 
       //corrupt and transmit data
@@ -3708,7 +4399,7 @@ class Combinational_SimPorts_abs
     if(is_bypass()) return true; // TODO: return false to deregister.
     
     // Input
-    if (rdy_set_by_api != in_rdy.read())
+    if (rdy_set_by_api != _RDYNAMEIN_.read())
     {
         // something has changed the value of the signal not through API
         // killing spawned threads;
@@ -3735,6 +4426,15 @@ class Combinational_SimPorts_abs
     return true;
   }
 
+  bool PrePostReset() {
+    data_val = false;
+
+    current_cycle = 0;
+    while(! b.is_empty()) { b.read(); }
+
+    return true;
+  }
+
   bool Post() {
     current_cycle++; // Increment to next cycle.
     
@@ -3744,7 +4444,7 @@ class Combinational_SimPorts_abs
     receive(b.is_full());
 
     // Output
-    if (val_set_by_api != out_val.read())
+    if (val_set_by_api != _VLDNAMEOUT_.read())
     {
         // something has changed the value of the signal not through API
         // killing spawned threads;
@@ -3801,7 +4501,7 @@ class Combinational_SimPorts_abs
   virtual void invalidate_msg() {
     CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
   }
-#endif
+#endif //CONNECTIONS_SIM_ONLY
 };
 
  
@@ -3812,14 +4512,14 @@ class Combinational <Message, SYN_PORT> : public Combinational_Ports_abs<Message
   typedef Wrapped<Message> WMessage;
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
-  sc_signal<MsgBits> msg;
+  sc_signal<MsgBits> _DATNAME_;
 
  Combinational() : Combinational_Ports_abs<Message>(),
-                    msg(sc_gen_unique_name("comb_msg"))
+                    _DATNAME_(sc_gen_unique_name(_COMBDATNAMESTR_))
     {}
   
   explicit Combinational(const char* name) : Combinational_Ports_abs<Message>(name),
-                                             msg(CONNECTIONS_CONCAT(name, "msg"))
+                                             _DATNAME_(CONNECTIONS_CONCAT(name, _COMBDATNAMESTR_))
     {}
 
 
@@ -3865,11 +4565,11 @@ class Combinational <Message, SYN_PORT> : public Combinational_Ports_abs<Message
   
  protected:
   void reset_msg() {
-    msg.write(0);
+    _DATNAME_.write(0);
   }
   
   void read_msg(Message &m) {
-    MsgBits mbits = msg.read();
+    MsgBits mbits = _DATNAME_.read();
     Marshaller<WMessage::width> marshaller(mbits);
     WMessage result;
     result.Marshall(marshaller);
@@ -3881,7 +4581,7 @@ class Combinational <Message, SYN_PORT> : public Combinational_Ports_abs<Message
     WMessage wm(m);
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
-    msg.write(bits);
+    _DATNAME_.write(bits);
   }
 
   void invalidate_msg() {
@@ -3890,7 +4590,7 @@ class Combinational <Message, SYN_PORT> : public Combinational_Ports_abs<Message
     // HLS for x-prop.
 #ifndef SLEC_CPC    
     MsgBits dc_bits;
-    msg.write(dc_bits);
+    _DATNAME_.write(dc_bits);
 #endif
   }
 };  
@@ -3917,20 +4617,20 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
   static const unsigned int width = WMessage::width;
   typedef sc_lv<WMessage::width> MsgBits;
 #ifdef CONNECTIONS_SIM_ONLY
-  sc_signal<MsgBits> in_msg;
-  sc_signal<MsgBits> out_msg;
+  sc_signal<MsgBits> _DATNAMEIN_;
+  sc_signal<MsgBits> _DATNAMEOUT_;
   OutBlocking<Message>* driver;
 #else
-  sc_signal<MsgBits> msg;
+  sc_signal<MsgBits> _DATNAME_;
 #endif
 
  Combinational() : Combinational_SimPorts_abs<Message, MARSHALL_PORT>()
 #ifdef CONNECTIONS_SIM_ONLY
-    ,in_msg(sc_gen_unique_name("comb_in_msg"))
-    ,out_msg(sc_gen_unique_name("comb_out_msg"))
+    ,_DATNAMEIN_(sc_gen_unique_name(_COMBDATNAMEINSTR_))
+    ,_DATNAMEOUT_(sc_gen_unique_name(_COMBDATNAMEOUTSTR_))
     ,dummyPortManager(sc_gen_unique_name("dummyPortManager"), this->sim_in, this->sim_out, *this)
 #else
-    ,msg(sc_gen_unique_name("comb_msg"))
+    ,_DATNAME_(sc_gen_unique_name(_COMBDATNAMESTR_))
 #endif
     {
 #ifdef CONNECTIONS_SIM_ONLY
@@ -3938,18 +4638,18 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
       
       //SC_METHOD(do_bypass);
       declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << in_msg << this->in_val << this->out_rdy;
+      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
 #endif
     }
   
   explicit Combinational(const char* name) : Combinational_SimPorts_abs<Message, MARSHALL_PORT>(name)
 
 #ifdef CONNECTIONS_SIM_ONLY
-    ,in_msg(CONNECTIONS_CONCAT(name, "comb_in_msg"))
-    ,out_msg(CONNECTIONS_CONCAT(name, "comb_out_msg"))
+    ,_DATNAMEIN_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBDATNAMEINSTR_)))
+    ,_DATNAMEOUT_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBDATNAMEOUTSTR_)))
     ,dummyPortManager(CONNECTIONS_CONCAT(name, "dummyPortManager"), this->sim_in, this->sim_out, *this)
 #else
-    ,msg(CONNECTIONS_CONCAT(name, "msg"))
+    ,_DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
 #endif
     {
 #ifdef CONNECTIONS_SIM_ONLY
@@ -3957,7 +4657,7 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
       
       //SC_METHOD(do_bypass);
       declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << in_msg << this->in_val << this->out_rdy;
+      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
 #endif
     }
 
@@ -3966,10 +4666,10 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
 #ifdef CONNECTIONS_SIM_ONLY
   void do_bypass() {
     if(! this->is_bypass()) return;
-    out_msg.write(in_msg.read());
+    _DATNAMEOUT_.write(_DATNAMEIN_.read());
     //write_msg(read_msg());
-    this->out_val.write(this->in_val.read());
-    this->in_rdy.write(this->out_rdy.read());
+    this->_VLDNAMEOUT_.write(this->_VLDNAMEIN_.read());
+    this->_RDYNAMEIN_.write(this->_RDYNAMEOUT_.read());
   }
 #endif  
   
@@ -3990,17 +4690,17 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
  protected:
   void reset_msg() {
 #ifdef CONNECTIONS_SIM_ONLY
-    out_msg.write(0);
+    _DATNAMEOUT_.write(0);
 #else
-    msg.write(0);
+    _DATNAME_.write(0);
 #endif
   }
   
   void read_msg(Message &m) {
 #ifdef CONNECTIONS_SIM_ONLY
-    MsgBits mbits = in_msg.read();
+    MsgBits mbits = _DATNAMEIN_.read();
 #else
-    MsgBits mbits = msg.read();
+    MsgBits mbits = _DATNAME_.read();
 #endif    
     Marshaller<WMessage::width> marshaller(mbits);
     WMessage result;
@@ -4014,9 +4714,9 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
     wm.Marshall(marshaller);
     MsgBits bits = marshaller.GetResult();
 #ifdef CONNECTIONS_SIM_ONLY
-    out_msg.write(bits);
+    _DATNAMEOUT_.write(bits);
 #else
-    msg.write(bits);
+    _DATNAME_.write(bits);
 #endif
   }
 
@@ -4027,9 +4727,9 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
 #ifndef SLEC_CPC    
     MsgBits dc_bits;
 #ifdef CONNECTIONS_SIM_ONLY
-    out_msg.write(dc_bits);
+    _DATNAMEOUT_.write(dc_bits);
 #else // ifdef CONNECTIONS_SIM_ONLY
-    msg.write(dc_bits);
+    _DATNAME_.write(dc_bits);
 #endif // ifdef CONNECTIONS_SIM_ONLY
 #endif // ifndef SLEC_CPC
   }
@@ -4058,9 +4758,9 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
             sc_signal<bool>* dummy_out_val = new sc_signal<bool>;
             sc_signal<bool>* dummy_out_rdy = new sc_signal<bool>;
 
-            out.msg(*dummy_out_msg);
-            out.val(*dummy_out_val);
-            out.rdy(*dummy_out_rdy);
+            out._DATNAME_(*dummy_out_msg);
+            out._VLDNAME_(*dummy_out_val);
+            out._RDYNAME_(*dummy_out_rdy);
             
             out.disable_spawn();
         }
@@ -4072,9 +4772,9 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
             sc_signal<bool>* dummy_in_val = new sc_signal<bool>;
             sc_signal<bool>* dummy_in_rdy = new sc_signal<bool>;
 
-            in.msg(*dummy_in_msg);
-            in.val(*dummy_in_val);
-            in.rdy(*dummy_in_rdy);
+            in._DATNAME_(*dummy_in_msg);
+            in._VLDNAME_(*dummy_in_val);
+            in._RDYNAME_(*dummy_in_rdy);
 
             in.disable_spawn();
         }
@@ -4082,12 +4782,12 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
 
     virtual void set_trace(sc_trace_file* trace_file_ptr)
     {
-      sc_trace(trace_file_ptr, parent.out_val, parent.out_val.name());
-      sc_trace(trace_file_ptr, parent.out_rdy, parent.out_rdy.name());
+      sc_trace(trace_file_ptr, parent._VLDNAMEOUT_, parent._VLDNAMEOUT_.name());
+      sc_trace(trace_file_ptr, parent._RDYNAMEOUT_, parent._RDYNAMEOUT_.name());
 
       if (!parent.driver)
       {
-        sc_trace(trace_file_ptr, parent.traced_msg, parent.out_msg.name());
+        sc_trace(trace_file_ptr, parent.traced_msg, parent._DATNAMEOUT_.name());
       }
       else
       {
@@ -4095,22 +4795,30 @@ class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs
         while (driver->driver)
           driver = driver->driver;
 
-        driver->set_trace(trace_file_ptr, parent.out_msg.name());
+        driver->set_trace(trace_file_ptr, parent._DATNAMEOUT_.name());
       }
     }
 
     bool set_log(std::ofstream* os, int& log_num, std::string& path_name)
     {
       if (!parent.driver)
-        return false;
+      {
+        OutBlocking<Message, MARSHALL_PORT>* driver = &(parent.sim_out);
 
-      OutBlocking<Message, MARSHALL_PORT>* driver = parent.driver;
-      while (driver->driver)
-          driver = driver->driver;
+        path_name = parent.name();
+        driver->set_log(++log_num, os);
+        return true;
+      }
+      else
+      {
+        OutBlocking<Message, MARSHALL_PORT>* driver = parent.driver;
+        while (driver->driver)
+            driver = driver->driver;
 
-      path_name = parent.out_msg.name();
-      driver->set_log(++log_num, os);
-      return true;
+        path_name = parent._DATNAMEOUT_.name();
+        driver->set_log(++log_num, os);
+        return true;
+      }
     }
 
     } dummyPortManager;
@@ -4127,51 +4835,51 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
  public:
   // Interface
 #ifdef CONNECTIONS_SIM_ONLY
-  sc_signal<Message> in_msg;
-  sc_signal<Message> out_msg;
+  sc_signal<Message> _DATNAMEIN_;
+  sc_signal<Message> _DATNAMEOUT_;
 #else
-  sc_signal<Message> msg;
+  sc_signal<Message> _DATNAME_;
 #endif
 
  Combinational() : Combinational_SimPorts_abs<Message, DIRECT_PORT>()
 #ifdef CONNECTIONS_SIM_ONLY
-    ,in_msg(sc_gen_unique_name("comb_in_msg"))
-    ,out_msg(sc_gen_unique_name("comb_out_msg"))
+    ,_DATNAMEIN_(sc_gen_unique_name(_COMBDATNAMEINSTR_))
+    ,_DATNAMEOUT_(sc_gen_unique_name(_COMBDATNAMEOUTSTR_ ))
     ,dummyPortManager(sc_gen_unique_name("dummyPortManager"), this->sim_in, this->sim_out, *this)
 #else
-    ,msg(sc_gen_unique_name("comb_msg"))
+    ,_DATNAME_(sc_gen_unique_name(_COMBDATNAMESTR_ ))
 #endif
     {
 #ifdef CONNECTIONS_SIM_ONLY
       //SC_METHOD(do_bypass);
       declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << in_msg << this->in_val << this->out_rdy;
+      this->sensitive << _DATNAMEIN_ << this->VLDNAMEIN_ << this->_RDYNAMEOUT_;
 #endif
     }
   
   explicit Combinational(const char* name) : Combinational_SimPorts_abs<Message, DIRECT_PORT>(name)
 #ifdef CONNECTIONS_SIM_ONLY
-    ,in_msg(CONNECTIONS_CONCAT(name, "comb_in_msg"))
-    ,out_msg(CONNECTIONS_CONCAT(name, "comb_out_msg"))
+    ,_DATNAMEIN_(CONNECTIONS_CONCAT(name, _COMBDATNAMEINSTR_ ))
+    ,_DATNAMEOUT_(CONNECTIONS_CONCAT(name, _COMBDATNAMEOUTSTR_))
     ,dummyPortManager(CONNECTIONS_CONCAT(name, "dummyPortManager"), this->sim_in, this->sim_out, *this)
 #else
-    ,msg(CONNECTIONS_CONCAT(name, "msg"))
+    ,_DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
 #endif
     {
 #ifdef CONNECTIONS_SIM_ONLY
       //SC_METHOD(do_bypass);
       declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << in_msg << this->in_val << this->out_rdy;
+      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
 #endif
     }
 
 #ifdef CONNECTIONS_SIM_ONLY
   void do_bypass() {
     if(! this->is_bypass()) return;
-    out_msg.write(in_msg.read());
+    _DATNAMEOUT_.write(_DATNAMEIN_.read());
     //write_msg(read_msg());
-    this->out_val.write(this->in_val.read());
-    this->in_rdy.write(this->out_rdy.read());
+    this->_VLDNAMEOUT_.write(this->_VLDNAMEIN_.read());
+    this->_RDYNAMEIN_.write(this->_RDYNAMEOUT_.read());
   }
 #endif  
 
@@ -4193,34 +4901,34 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
   void reset_msg() {
     Message dc;
 #ifdef CONNECTIONS_SIM_ONLY
-    out_msg.write(dc);
+    _DATNAMEOUT_.write(dc);
 #else
-    msg.write(dc);
+    _DATNAME_.write(dc);
 #endif
   }
   
   void read_msg(Message &m) {
 #ifdef CONNECTIONS_SIM_ONLY
-    m = in_msg.read();
+    m = _DATNAMEIN_.read();
 #else
-    m = msg.read();
+    m = _DATNAME_.read();
 #endif
   }
   
   void write_msg(const Message &m) {
 #ifdef CONNECTIONS_SIM_ONLY
-  out_msg.write(m);
+  _DATNAMEOUT_.write(m);
 #else
-  msg.write(m);
+  _DATNAME_.write(m);
 #endif
   }
 
   void invalidate_msg() {
       Message dc;
 #ifdef CONNECTIONS_SIM_ONLY
-      out_msg.write(dc);
+      _DATNAMEOUT_.write(dc);
 #else
-      msg.write(dc);
+      _DATNAME_.write(dc);
 #endif
   }
 
@@ -4249,9 +4957,9 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
             sc_signal<bool>* dummy_out_val = new sc_signal<bool>;
             sc_signal<bool>* dummy_out_rdy = new sc_signal<bool>;
 
-            out.msg(*dummy_out_msg);
-            out.val(*dummy_out_val);
-            out.rdy(*dummy_out_rdy);
+            out._DATNAME_(*dummy_out_msg);
+            out._VLDNAME_(*dummy_out_val);
+            out._RDYNAME_(*dummy_out_rdy);
             
             out.disable_spawn();
         }
@@ -4263,9 +4971,9 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
             sc_signal<bool>* dummy_in_val = new sc_signal<bool>;
             sc_signal<bool>* dummy_in_rdy = new sc_signal<bool>;
 
-            in.msg(*dummy_in_msg);
-            in.val(*dummy_in_val);
-            in.rdy(*dummy_in_rdy);
+            in._DATNAME_(*dummy_in_msg);
+            in._VLDNAME_(*dummy_in_val);
+            in._RDYNAME_(*dummy_in_rdy);
 
             in.disable_spawn();
         }
@@ -4278,7 +4986,7 @@ class Combinational <Message, DIRECT_PORT> : public Combinational_SimPorts_abs<M
 
 #ifdef CONNECTIONS_SIM_ONLY
 template <typename Message>
-class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message> {
+class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message>, public Blocking_abs {
  public:
 
  Combinational() : Combinational_Ports_abs<Message>()
@@ -4291,18 +4999,30 @@ class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message
   // Reset
   void ResetRead() {
     this->read_reset_check.reset();
+    get_conManager().add_clock_event(this);
     Message temp;
     while (fifo.nb_get(temp));
   }
 
   void ResetWrite() {
     this->write_reset_check.reset();
+    get_conManager().add_clock_event(this);
+  }
+
+  void do_reset_check() {
+/*
+    this->read_reset_check.check();
+    this->write_reset_check.check();
+*/
   }
 
 // Pop
 #pragma design modulario < in >
   Message Pop() {
     this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return fifo.get();
   }
 
@@ -4310,6 +5030,9 @@ class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message
 #pragma design modulario < in >
   Message Peek() {
     this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return fifo.peek();
   }
 
@@ -4317,6 +5040,9 @@ class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message
 #pragma design modulario < in >
   bool PopNB(Message& data) {
     this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return fifo.nb_get(data);
   }
 
@@ -4324,6 +5050,9 @@ class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message
 #pragma design modulario < out >
   void Push(const Message& m) {
     this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     fifo.put(m);
   }
 
@@ -4331,6 +5060,9 @@ class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message
 #pragma design modulario < out >
   bool PushNB(const Message& m) {
     this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+    get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
     return fifo.nb_put(m);
   }
 

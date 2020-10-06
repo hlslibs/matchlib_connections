@@ -1,17 +1,23 @@
 set sfd [file dir [info script]]
 
-## Make sure the timing annotation file is local
+## Make sure the input timing annotation file is found 
+set input_dir_path .
+set base_name my_testbench
 if { "[file normalize $sfd]" ne "[file normalize [pwd]]" } {
-  if { ![file exists ./my_testbench.input.json] } {
-    file copy "$sfd/my_testbench.input.json" .
+  if { ![file exists $input_dir_path/$base_name.input.json] } {
+    set input_dir_path "$sfd"
   }
 }
 
-solution new -state initial
-solution options defaults
-solution options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM}
+options defaults
+
+options set /Input/CppStandard c++11
+options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM}
+
+project new
 
 flow package require /SCVerify
+solution options set Flows/SCVerify/INVOKE_ARGS [list $base_name $input_dir_path]
 solution file add "$sfd/Adder3.h" -type CHEADER
 solution file add "$sfd/testbench.cpp" -type C++ -exclude true
 

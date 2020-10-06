@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
  * 
@@ -13,17 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-//========================================================================
+//*****************************************************************************************
 // connections_utils.h
 //
 // Define macros and typedefs to use within Connections. May be tool or
 // library dependent.
-//========================================================================
+//
+//*****************************************************************************************
 
 #ifndef __CONNECTIONS__CONNECTIONS_UTILS_H_
 #define __CONNECTIONS__CONNECTIONS_UTILS_H_
 
-#include <systemc>
+#include <systemc.h>
+#include <ac_assert.h>
+
 
 /**
  * \def CONNECTIONS_ASSERT_MSG(x, msg)
@@ -43,36 +47,11 @@
  * \endcode
  * \par
  */
-
-#ifdef HLS_CATAPULT
-#include <ac_assert.h>
-
-  #ifndef CONNECTIONS_ASSERT_MSG
-    #define CONNECTIONS_ASSERT_MSG(X,MSG) \
-    if (!(X)) { \
-      CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);  \
-    }\
-    assert(X);
-  #endif // ifndef CONNECTIONS_ASSERT_MSG
-
-#else // HLS_CATAPULT
-
-  #ifndef __SYNTHESIS__
-    #ifndef CONNECTIONS_ASSERT_MSG
-      #define CONNECTIONS_ASSERT_MSG(X,MSG)  \
-      if (!(X)) { \
-        CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);  \
-      } \
-      sc_assert(X);
-    #endif // ifndef CONNECTIONS_ASSERT_MSG
-  #else
-    #ifndef CONNECTIONS_ASSERT_MSG
-      #define CONNECTIONS_ASSERT_MSG(X,MSG) ((void)0);
-    #endif // ifndef CONNECTIONS_ASSERT_MSG
-  #endif
-
-#endif // HLS_CATAPULT
-
+#define CONNECTIONS_ASSERT_MSG(X,MSG)           \
+  if (!(X)) {                                                 \
+    CONNECTIONS_COUT("Assertion Failed. " << MSG << endl);    \
+  }                                                           \
+  assert(X);
 
 /**
  * \def CONNECTIONS_SIM_ONLY_ASSERT_MSG(x, msg)
@@ -92,7 +71,6 @@
  * \endcode
  * \par
  */
-#ifndef CONNECTIONS_SIM_ONLY_ASSERT_MSG
 #ifndef __SYNTHESIS__
 #define CONNECTIONS_SIM_ONLY_ASSERT_MSG(X,MSG) \
   if (!(X)) { \
@@ -102,19 +80,15 @@
 #else
 #define CONNECTIONS_SIM_ONLY_ASSERT_MSG(X,MSG) ((void)0);
 #endif // ifdef __SYNTHESIS__
-#endif // ifndef CONNECTIONS_SIM_ONLY_ASSERT_MSG
-
 
 // Define preferred debug mechanism.
 // FIXME: Change this to not support << but be a string instead, so can be pushed over to
 // sc_report as well.
-#ifndef CONNECTIONS_COUT
 #if __SYNTHESIS__
-   #define CONNECTIONS_COUT(x) ((void)0);
+#define CONNECTIONS_COUT(x) ((void)0);
 #else
-   #define CONNECTIONS_COUT(x) cout << x
+#define CONNECTIONS_COUT(x) std::cout << x
 #endif
-#endif // ifndef CONNECTIONS_COUT
 
 /**
  * \brief CONNECTIONS_CONCAT define: Concatenate two strings, separate with an underscore.
@@ -125,21 +99,14 @@
  * Catapult synthesis in C++11 mode currently doesn't support + operators on
  * strings, so only s2 is used.
  */
-#ifndef CONNECTIONS_CONCAT
-
-#if defined(__SYNTHESIS__) && defined(HLS_CATAPULT) && __cplusplus >= 201103L
+#if defined(__SYNTHESIS__) && __cplusplus >= 201103L
 #define CONNECTIONS_CONCAT(s1,s2) (std::string(s2)).c_str()
 #else
 #define CONNECTIONS_CONCAT(s1,s2) (std::string(s1) + "_" + std::string(s2)).c_str()
 #endif
 
-#endif // ifndef CONNECTIONS_CONCAT
-
 namespace Connections {
-
-  // Intentionally empty for now. Placeholder for any classes that we may want to override later. (e.g. Fifo for BufferedPorts)
-
-}  // namespace Connections
+  // placeholder for utility code
+}
 
 #endif  // __CONNECTIONS__CONNECTIONS_UTILS_H_
-

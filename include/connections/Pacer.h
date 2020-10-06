@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  * 
@@ -13,6 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//*****************************************************************************************
+// File: Pacer.h
+//
+// Revision History:
+//  1.2.0    - Initial version
+//
+//*****************************************************************************************
 
 #ifndef __CONNECTIONS__PACER_H__
 #define __CONNECTIONS__PACER_H__
@@ -87,6 +96,9 @@ class Pacer {
 
   virtual void reset() { stalled = false; }
 
+  virtual void set_stall_prob(float &newProb) { stall_prob=(static_cast<float>(newProb) * precision); }
+  virtual void set_hold_stall_prob(float &newProb) { hold_stall_prob=(static_cast<float>(newProb) * precision); }
+
   // return whether we should stall this cycle
   virtual bool tic() {
 #ifdef DISABLE_PACER
@@ -103,6 +115,7 @@ class Pacer {
     }
     return stalled;
   }
+
 };
 
 #endif // __CONNECTIONS__PACER_H_

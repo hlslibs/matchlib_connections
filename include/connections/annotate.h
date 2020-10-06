@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
  * 
@@ -13,9 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-//========================================================================
+//*****************************************************************************************
 // annotate.h
-//========================================================================
+//
+// Revision History:
+//  1.2.0    - Fixed bug in pathname handling in annotate_design()
+//
+//*****************************************************************************************
 
 
 #ifndef __CONNECTIONS__ANNOTATE_H__
@@ -147,11 +152,13 @@ namespace Connections {
 
     // Sanity check input and output paths if they exist
     if(input_dir_path.length() > 0) {
-      input_dir_path += "/";
+      if(input_dir_path.back() != '/')
+        input_dir_path += "/";
       explicit_input_dir = true;
     }
     if(output_dir_path.length() > 0) {
-      output_dir_path += "/";
+      if(output_dir_path.back() != '/')
+        output_dir_path += "/";
     }
     
     std::string input_path  = input_dir_path + base_name + "input.json";

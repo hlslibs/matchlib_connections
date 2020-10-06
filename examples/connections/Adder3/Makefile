@@ -1,84 +1,119 @@
+# Makefile for example Adder3
+
+CXXFLAGS += -g -std=c++11 -Wall -Wno-unknown-pragmas -Wno-unused-variable -Wno-unused-label
+
+# Must always use these user flags for this test, since it is cycle count dependent.
+USER_FLAGS := -DCONNECTIONS_ACCURATE_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES
+
+# =====================================================================
+# ENVIRONMENT VARIABLES
 #
-# Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
-# 
-# Licensed under the Apache License, Version 2.0 (the "License")
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-# 
-#     http://www.apache.org/licenses/LICENSE-2.0
-# 
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+# The following environment variables will specify paths
+# to open-source repositories that are also included in
+# a Catapult install tree.
+# If you are using Catapult (i.e. if CATAPULT_HOME or MGC_HOME is set)
+# then you do not need to define these environment variables.
+# If, however, you wish to point to your own github clone
+# of any of these repositories, then define the appropriate
+# environment variable.
 
-# Must always use these modes for this test, since it is cycle count
-# dependent.
-override SIM_MODE=1
-override RAND_STALL=0
+# If CATAPULT_HOME not set, use value of MGC_HOME for backward compatibility.
+CATAPULT_HOME ?= $(MGC_HOME)
 
-CC = g++
+ifneq "$(CATAPULT_HOME)" ""
 
-ifneq ($(SYSTEMC_HOME),)
-INCDIR += -I$(SYSTEMC_HOME)/include
-LIBDIR += -L$(SYSTEMC_HOME)/lib-linux64
+# Pick up SystemC via "SYSTEMC_HOME"
+SYSTEMC_HOME ?= $(CATAPULT_HOME)/shared
+
+# Pick up Connections via "CONNECTIONS_HOME"
+CONNECTIONS_HOME ?= $(CATAPULT_HOME)/shared
+
+# Pick up AC Simutils via "AC_SIMUTILS"
+AC_SIMUTILS ?= $(CATAPULT_HOME)/shared
+
+# Pick up C++ compiler
+CXX := $(CATAPULT_HOME)/bin/g++
+LD_LIBRARY_PATH := $(if $(LD_LIBRARY_PATH),$(LD_LIBRARY_PATH):)$(CATAPULT_HOME)/lib
+
+else
+
+# CATAPULT_HOME appears to not be set. Make sure required variables are defined
+
+ifndef SYSTEMC_HOME
+$(error - Environment variable SYSTEMC_HOME must be defined)
+endif
+ifndef CONNECTIONS_HOME
+$(error - Environment variable CONNECTIONS_HOME must be defined)
+endif
+ifndef AC_SIMUTILS
+$(error - Environment variable AC_SIMUTILS must be defined)
 endif
 
-INCDIR += -I$(MGC_HOME)/shared/include
-LIBDIR += -L$(MGC_HOME)/shared/lib
-
-CFLAGS ?= 
-CFLAGS += -Wall -Wno-unknown-pragmas $(INCDIR) $(LIBDIR)
-
-HLS_CATAPULT ?= 1
-ifeq ($(HLS_CATAPULT),1)
-  CFLAGS += -DHLS_CATAPULT
 endif
 
-LIBS ?=
+# ---------------------------------------------------------------------
+
+# Check: $(SYSTEMC_HOME)/include/systemc.h must exist
+checkvar_SYSTEMC_HOME: $(SYSTEMC_HOME)/include/systemc.h
+
+# Check: $(CONNECTIONS_HOME)/include/connections/connections.h must exist
+checkvar_CONNECTIONS_HOME: $(CONNECTIONS_HOME)/include/connections/connections.h
+
+# Check: $(AC_SIMUTILS)/include/mc_scverify.h
+checkvar_AC_SIMUTILS: $(AC_SIMUTILS)/include/mc_scverify.h
+
+# Rule to check that environment variables are set correctly
+checkvars: checkvar_SYSTEMC_HOME checkvar_CONNECTIONS_HOME checkvar_AC_SIMUTILS
+# =====================================================================
+
+# Determine the director containing the source files from the path to this Makefile
+SOURCE_DIR = $(dir $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST)))
+
+INCDIRS := -I$(SOURCE_DIR)
+INCDIRS += -I$(SYSTEMC_HOME)/include
+INCDIRS += -I$(CONNECTIONS_HOME)/include
+INCDIRS += -I$(AC_SIMUTILS)/include
+
+CPPFLAGS += $(INCDIRS)
+CPPFLAGS += $(USER_FLAGS)
+
+SYSC_LIBDIRS := $(strip $(foreach ldir,lib-linux64 lib-linux lib,$(wildcard $(SYSTEMC_HOME)/$(ldir))))
+LIBDIRS += $(foreach ldir,$(SYSC_LIBDIRS),-L$(ldir))
 LIBS += -lsystemc -lpthread
+LD_LIBRARY_PATH := $(if $(LD_LIBRARY_PATH),$(LD_LIBRARY_PATH):)$(subst $(eval) ,:,$(SYSC_LIBDIRS))
+export LD_LIBRARY_PATH
 
-# SIM_MODE
-# 0 = Synthesis view of Connections port and combinational code. This option can cause failed simulations due to SystemC's timing model.
-# 1 = Cycle accurate view of Connections port and channel code, CONNECTOINS_ACCURATE_SIM. (default)
-# 1 = Faster TLM view of Connections port and channel code, CONNECTIONS_FAST_SIM.
-SIM_MODE ?= 1
-ifeq ($(SIM_MODE),0)
-# No flags are added, intentionally blank.
-endif
-ifeq ($(SIM_MODE),1)
-	USER_FLAGS += -DCONNECTIONS_ACCURATE_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES
-endif
-ifeq ($(SIM_MODE),2)
-	USER_FLAGS += -DCONNECTIONS_FAST_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES
-endif
+.PHONY: all build run clean sim_clean help
+.DEFAULT_GOAL := all
+all: run
 
-# RAND_STALL
-# 0 = Random stall of ports and channels disabled (default)
-# 1 = Random stall of ports and channels enabled
-#
-# This feature aids in latency insensitive design verication.
-# Note: Only valid if SIM_MODE = 1 (accurate) or 2 (fast)
-ifeq ($(RAND_STALL),1)
-	$(error Random stall cannot be used with back annotated timing tests)
-endif
+build: checkvars sim_sc
 
-.PHONY: Build
-Build: all
+run: build
+	./sim_sc my_testbench $(SOURCE_DIR)
+
+sim_sc: $(wildcard $(SOURCE_DIR)*.h) $(wildcard $(SOURCE_DIR)*.cpp)
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LIBDIRS) $(wildcard $(SOURCE_DIR)*.cpp) -o $@ $(LIBS)
 
 clean:
 	rm -rf *.o sim_* dump.vcd *.output.json
 
-all: sim_adder3
-
-run:
-	./sim_adder3
-
-sim_adder3: $(wildcard *.h) $(wildcard *.cpp)
-	$(CC) -o sim_adder3 $(CFLAGS) $(USER_FLAGS) $(wildcard *.cpp) $(LIBS)
-
-sim_clean:
-	rm -rf *.o sim_*
+help:
+	-@echo "Makefile targets:"
+	-@echo "  clean     - Clean up from previous make runs"
+	-@echo "  all       - Perform all of the targets below"
+	-@echo "  build     - Compile SystemC design"
+	-@echo "  run       - Execute SystemC design"
+	-@echo ""
+	-@echo "  SOURCE_DIR         = $(SOURCE_DIR)"
+	-@echo ""
+	-@echo "Environment/Makefile Variables:"
+	-@echo "  CATAPULT_HOME      = $(CATAPULT_HOME)"
+	-@echo "  SYSTEMC_HOME       = $(SYSTEMC_HOME)"
+	-@echo "  CONNECTIONS_HOME   = $(CONNECTIONS_HOME)"
+	-@echo "  AC_SIMUTILS        = $(AC_SIMUTILS)"
+	-@echo "  CXX                = $(CXX)"
+	-@echo "  LIBDIRS            = $(LIBDIRS)"
+	-@echo "  LD_LIBRARY_PATH    = $(LD_LIBRARY_PATH)"
+	-@echo ""
 

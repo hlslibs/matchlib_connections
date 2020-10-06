@@ -1,8 +1,10 @@
 set sfd [file dir [info script]]
 
-solution new -state initial
-solution options defaults
-solution options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM}
+options defaults
+options set /Input/CppStandard c++11
+options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM}
+
+project new
 
 flow package require /SCVerify
 solution file add "$sfd/Adder.h" -type CHEADER
