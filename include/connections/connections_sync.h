@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Tue Oct  6 14:40:36 PDT 2020                        *
+ *  Release Date    : Wed Oct  7 17:25:57 PDT 2020                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.0                                               *
+ *  Release Build   : 1.2.1                                               *
  *                                                                        *
  *  Copyright , Mentor Graphics Corporation,                     *
  *                                                                        *
@@ -38,6 +38,7 @@
 // 
 //
 // Revision History:
+//  1.2.1    - Corrected p2p_checker to be sync_checker
 //  1.2.0    - Refactored "sync" connections from mc_connections.h
 //
 //*****************************************************************************************
@@ -143,7 +144,7 @@ namespace Connections
     
     // SYN input port definition
     class in {
-      p2p_checker rd_chk;
+      sync_checker rd_chk;
       
     public:
       sc_in <bool> vld ;
@@ -193,7 +194,7 @@ namespace Connections
     };  // in
 
     class out {
-      p2p_checker wr_chk;
+      sync_checker wr_chk;
       
     public:
       sc_out <bool> vld ;
