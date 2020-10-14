@@ -1,13 +1,13 @@
 
 /*
  * Copyright (c) 2017-2019, NVIDIA CORPORATION.  All rights reserved.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,12 +23,12 @@
 //           - Added Sign to Type template parameters.
 //           - Add Connections support for ac_std_float and ac::bfloat16. CAT-25338
 //           - Remove ccs_p2p.h dependency from mashaller.h.
-//           - Make marshaller.h "re-entrant" to allow better flexibility 
+//           - Make marshaller.h "re-entrant" to allow better flexibility
 //             for ordering include files.
-//           - Add connections support for sc_fixed, ac_fixed (>3 parameters), 
-//             ieee_float, C int datatypes, and ac_complex usages of all 
+//           - Add connections support for sc_fixed, ac_fixed (>3 parameters),
+//             ieee_float, C int datatypes, and ac_complex usages of all
 //             those types.  CAT-24885, CAT-24940, CAT-25256, CAT-25279
-//            
+//
 //*****************************************************************************************
 
 #if !defined(__CONNECTIONS__MARSHALLER_H_)
@@ -43,12 +43,14 @@
 // Marshaller casting functions
 
 template<typename A, int vec_width>
-void connections_cast_type_to_vector(const A &data, int length, sc_lv<vec_width> &vec) {
+void connections_cast_type_to_vector(const A &data, int length, sc_lv<vec_width> &vec)
+{
   type_to_vector(data, length, vec);
 }
 
 template<typename A, int vec_width>
-void connections_cast_vector_to_type(const sc_lv<vec_width> &vec, bool is_signed, A *data) {
+void connections_cast_vector_to_type(const sc_lv<vec_width> &vec, bool is_signed, A *data)
+{
   vector_to_type(vec, is_signed, data);
 }
 
@@ -56,13 +58,13 @@ void connections_cast_vector_to_type(const sc_lv<vec_width> &vec, bool is_signed
 // Marshaller
 
 /**
- * \brief Marshaller is used to automatically convert types to logic vector and vice versa 
+ * \brief Marshaller is used to automatically convert types to logic vector and vice versa
  * \ingroup Marshaller
  *
  * \par Overview
  * Marshaller class: similar to boost's serialization approach, Marshaller class
  * provides an easy way to convert an arbitrary SystemC data structures to/from
- * a sequence of bits. 
+ * a sequence of bits.
  * NOTE: I am assuming all the types that we are dealing with are
  * unsigned which may or may not be true. This matters in places where the
  * Marshaller will use vector_to_type calls.
@@ -101,12 +103,13 @@ void connections_cast_vector_to_type(const sc_lv<vec_width> &vec, bool is_signed
  *
  */
 template <unsigned int Size>
-class Marshaller {
+class Marshaller
+{
   sc_lv<Size> glob;
   unsigned int cur_idx;
   bool is_marshalling;
 
- public:
+public:
   /* Constructor.
    *   if is_marshalling == True:
    *     convert type to bits;
@@ -117,7 +120,7 @@ class Marshaller {
 
   /* Add a field to the glob, or extract it. */
   template <typename T, int FieldSize>
-  void AddField(T& d) {
+  void AddField(T &d) {
     CONNECTIONS_SIM_ONLY_ASSERT_MSG(cur_idx + FieldSize <= Size, "Field size exceeded Size. Is a message's width enum missing an element, and are all fields marshalled?");
     if (is_marshalling) {
       sc_lv<FieldSize> bits;
@@ -134,21 +137,21 @@ class Marshaller {
   /* Return the bit vector. */
   sc_lv<Size> GetResult() {
     CONNECTIONS_SIM_ONLY_ASSERT_MSG(cur_idx==Size, "Size doesn't match current index. Is a message's width enum missing an element, and are all fields marshalled?");
-    return glob.range(Size - 1, 0); 
+    return glob.range(Size - 1, 0);
   }
 
   /* Operator &.
    * T needs to have a Marshall() function defined. */
   template <typename T>
-  Marshaller<Size>& operator&(T& rhs) {
+  Marshaller<Size> &operator&(T &rhs) {
     rhs.Marshall(*this);
     return *this;
   }
 };
 
 /**
- * \brief Generic Wrapped class: wraps different datatypes to communicate with Marshaller 
- * \ingroup Marshaller 
+ * \brief Generic Wrapped class: wraps different datatypes to communicate with Marshaller
+ * \ingroup Marshaller
  *
  * \par Overview
  *  This function is used to determine the width of a datatype. For ac_types, it relies on static member inside the class called width. For sc_types and bool, Wrapped class has specilizations that determine its width.
@@ -165,38 +168,41 @@ class Marshaller {
  *
  */
 template <typename T>
-class Wrapped {
- public:
+class Wrapped
+{
+public:
   T val;
   Wrapped() {}
-  Wrapped(const T& v) : val(v) {}
+  Wrapped(const T &v) : val(v) {}
   static const unsigned int width = T::width;
   // Assigning is_signed to false by default. Specializations for basic signed types are defined below
   static const bool is_signed = false;
   template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
+  void Marshall(Marshaller<Size> &m) {
     val.template Marshall<Size>(m);
   }
 };
 
 /* Wrapped class specialization for sc_lv.  */
 template <int Width>
-class Wrapped<sc_lv<Width> > {
- public:
+class Wrapped<sc_lv<Width> >
+{
+public:
   sc_lv<Width> val;
   Wrapped() {}
-  Wrapped(const sc_lv<Width>& v) : val(v) {}
+  Wrapped(const sc_lv<Width> &v) : val(v) {}
   static const unsigned int width = Width;
   static const bool is_signed = false;
   template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-    m& val;
+  void Marshall(Marshaller<Size> &m) {
+    m &val;
   }
 };
 
 /* Operator & for Marshaller and sc_lv. */
 template <unsigned int Size, int K>
-Marshaller<Size>& operator&(Marshaller<Size>& m, sc_lv<K>& rhs) {
+Marshaller<Size> &operator&(Marshaller<Size> &m, sc_lv<K> &rhs)
+{
   m.template AddField<sc_lv<K>, K>(rhs);
   return m;
 }
@@ -431,41 +437,55 @@ SpecialFloatWrapper(ac_ieee_float<binary128>, 128);
 SpecialFloatWrapper(ac_ieee_float<binary256>, 256);
 
 template <>
-class Wrapped<ac::bfloat16 > {
- public:
+class Wrapped<ac::bfloat16 >
+{
+public:
   ac::bfloat16 val;
- Wrapped() : val(0.0) {}
- Wrapped(const ac::bfloat16 &v) : val(v) {}
+  Wrapped() : val(0.0) {}
+  Wrapped(const ac::bfloat16 &v) : val(v) {}
   static const unsigned int width = 16;
   static const bool is_signed = 1;
   template <unsigned int Size>
-    void Marshall(Marshaller<Size>& m) {
-    m& val;
+  void Marshall(Marshaller<Size> &m) {
+    m &val;
   }
 };
- template <unsigned int Size >
- Marshaller<Size>& operator&(Marshaller<Size>& m,  ac::bfloat16 &rhs) {
-   m.template AddField< ac::bfloat16, 16 > (rhs);
+template <unsigned int Size >
+Marshaller<Size> &operator&(Marshaller<Size> &m,  ac::bfloat16 &rhs)
+{
+  m.template AddField< ac::bfloat16, 16 > (rhs);
   return m;
 }
 
 template <int W, int E>                \
-class Wrapped<ac_std_float<W,E> > {    \
- public:                                 \
-  ac_std_float<W,E> val;                              \
- Wrapped() : val(0.0) {}                 \
- Wrapped(const ac_std_float<W,E> &v) : val(v) {}      \
-  static const unsigned int width = W;   \
-  static const bool is_signed = 1;       \
+class Wrapped<ac_std_float<W,E> >
+{
+  \
+public:                                 \
+  ac_std_float<W,E> val;
+  \
+  Wrapped() : val(0.0) {}                 \
+  Wrapped(const ac_std_float<W,E> &v) : val(v) {}      \
+  static const unsigned int width = W;
+  \
+  static const bool is_signed = 1;
+  \
   template <unsigned int Size>           \
-    void Marshall(Marshaller<Size>& m) { \
-    m& val;                              \
+  void Marshall(Marshaller<Size> &m) {
+    \
+    m &val;
+    \
   }                                      \
-};                                       \
+};
+\
 template <unsigned int Size, int W, int E>                                          \
-  Marshaller<Size>& operator&(Marshaller<Size>& m, ac_std_float<W,E> &rhs) { \
-   m.template AddField<ac_std_float<W,E>, W > (rhs);                    \
-  return m;                                                     \
+Marshaller<Size> &operator&(Marshaller<Size> &m, ac_std_float<W,E> &rhs)
+{
+  \
+  m.template AddField<ac_std_float<W,E>, W > (rhs);
+  \
+  return m;
+  \
 }
 
 #endif  // __AC_STD_FLOAT_H
@@ -473,26 +493,28 @@ template <unsigned int Size, int W, int E>                                      
 #if defined(__AC_COMPLEX_H) && !defined(__MARSHALLER_AC_COMPLEX_H)
 #define __MARSHALLER_AC_COMPLEX_H
 
-template <class T>                                               
-class Wrapped<ac_complex<T> > {                                      
-   public:
-    ac_complex<T> val;
-    Wrapped() {}
-    Wrapped(const ac_complex<T>& v) : val(v) {}
-    static const unsigned int width = 2 * Wrapped<T>::width;
-    static const bool is_signed = Wrapped<T>::is_signed;
-    template <unsigned int Size>
-    void Marshall(Marshaller<Size>& m) {
-      m& val._r;
-      m& val._i;
-    }
+template <class T>
+class Wrapped<ac_complex<T> >
+{
+public:
+  ac_complex<T> val;
+  Wrapped() {}
+  Wrapped(const ac_complex<T> &v) : val(v) {}
+  static const unsigned int width = 2 * Wrapped<T>::width;
+  static const bool is_signed = Wrapped<T>::is_signed;
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    m &val._r;
+    m &val._i;
+  }
 };
 
 template <unsigned int Size, class T>
-Marshaller<Size>& operator&(Marshaller<Size> & m, ac_complex<T>& rhs) { 
-    m.template AddField<T, Wrapped<T>::width>(rhs._r);
-    m.template AddField<T, Wrapped<T>::width>(rhs._i);
-    return m;
+Marshaller<Size> &operator&(Marshaller<Size> &m, ac_complex<T> &rhs)
+{
+  m.template AddField<T, Wrapped<T>::width>(rhs._r);
+  m.template AddField<T, Wrapped<T>::width>(rhs._i);
+  return m;
 }
 #endif  // __AC_COMPLEX_H
 
@@ -504,21 +526,23 @@ Marshaller<Size>& operator&(Marshaller<Size> & m, ac_complex<T>& rhs) {
 // Specialization for p2p<>::in
 
 template <typename Message>
-class Wrapped<p2p<>::in<Message> > {
- public:
+class Wrapped<p2p<>::in<Message> >
+{
+public:
   p2p<>::in<Message> val;
   Wrapped() : val("in") {}
-  Wrapped(const p2p<>::in<Message>& v) : val(v) {}
+  Wrapped(const p2p<>::in<Message> &v) : val(v) {}
   static const unsigned int width = Wrapped<Message>::width;
   static const bool is_signed = Wrapped<Message>::is_signed;
   template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-    m& val;
+  void Marshall(Marshaller<Size> &m) {
+    m &val;
   }
 };
 
 template <unsigned int Size, typename Message>
-Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::in<Message>& rhs) {
+Marshaller<Size> &operator&(Marshaller<Size> &m, p2p<>::in<Message> &rhs)
+{
   m.template AddField<Message, Wrapped<Message>::width>(rhs);
   return m;
 }
@@ -529,21 +553,23 @@ Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::in<Message>& rhs) {
 // Specialization for p2p<>::out
 
 template <typename Message>
-class Wrapped<p2p<>::out<Message> > {
- public:
+class Wrapped<p2p<>::out<Message> >
+{
+public:
   p2p<>::out<Message> val;
   Wrapped() : val("out") {}
-  Wrapped(const p2p<>::out<Message>& v) : val(v) {}
+  Wrapped(const p2p<>::out<Message> &v) : val(v) {}
   static const unsigned int width = Wrapped<Message>::width;
   static const bool is_signed = Wrapped<Message>::is_signed;
   template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-    m& val;
+  void Marshall(Marshaller<Size> &m) {
+    m &val;
   }
 };
 
 template <unsigned int Size, typename Message>
-Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::out<Message>& rhs) {
+Marshaller<Size> &operator&(Marshaller<Size> &m, p2p<>::out<Message> &rhs)
+{
   m.template AddField<Message, Wrapped<Message>::width>(rhs);
   return m;
 }
@@ -554,21 +580,23 @@ Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::out<Message>& rhs) {
 // Specialization for p2p<>::chan
 
 template <typename Message>
-class Wrapped<p2p<>::chan<Message> > {
- public:
+class Wrapped<p2p<>::chan<Message> >
+{
+public:
   p2p<>::chan<Message> val;
   Wrapped() : val("chan") {}
-  Wrapped(const p2p<>::chan<Message>& v) : val(v) {}
+  Wrapped(const p2p<>::chan<Message> &v) : val(v) {}
   static const unsigned int width = Wrapped<Message>::width;
   static const bool is_signed = Wrapped<Message>::is_signed;
   template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-    m& val;
+  void Marshall(Marshaller<Size> &m) {
+    m &val;
   }
 };
 
 template <unsigned int Size, typename Message>
-Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::chan<Message>& rhs) {
+Marshaller<Size> &operator&(Marshaller<Size> &m, p2p<>::chan<Message> &rhs)
+{
   m.template AddField<Message, Wrapped<Message>::width>(rhs);
   return m;
 }
@@ -577,8 +605,8 @@ Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::chan<Message>& rhs) {
 #ifndef __CONNECTIONS__MARSHALLER_H_
 #define __CONNECTIONS__MARSHALLER_H_
 /**
- * \brief StaticMax Class: returns the larger value between two unsigned integers 
- * \ingroup StaticMax 
+ * \brief StaticMax Class: returns the larger value between two unsigned integers
+ * \ingroup StaticMax
  *
  * \par A Simple Example
  * \code
@@ -593,13 +621,14 @@ Marshaller<Size>& operator&(Marshaller<Size>& m, p2p<>::chan<Message>& rhs) {
  *
  */
 template <unsigned int A, unsigned int B>
-class StaticMax {
- public:
+class StaticMax
+{
+public:
   static const unsigned int value = A > B ? A : B;
 };
 
 /**
- * \brief  BitUnion2 class: A union class to hold two Marshallers. 
+ * \brief  BitUnion2 class: A union class to hold two Marshallers.
  * \ingroup BitUnion2
  *
  * \par A Simple Example
@@ -621,23 +650,24 @@ class StaticMax {
  *  if (type_union.IsB()) {
  *    TypeB tmp = type_union.GetB();
  *  }
- *  
+ *
  * \endcode
  * \par
  *
  */
 template <typename A, typename B>
-class BitUnion2 {
- public:
+class BitUnion2
+{
+public:
   static const unsigned int larger_width =
-      StaticMax<Wrapped<A>::width, Wrapped<B>::width>::value;
+    StaticMax<Wrapped<A>::width, Wrapped<B>::width>::value;
   static const unsigned int width = larger_width + 1;
-  static const bool is_signed = false; 
+  static const bool is_signed = false;
 
   /* Constructors. */
   BitUnion2() : payload(0), tag(0) {}
-  BitUnion2(const A& initdata) : payload(0), tag(0) { Set(initdata); }
-  BitUnion2(const B& initdata) : payload(0), tag(1) { Set(initdata); }
+  BitUnion2(const A &initdata) : payload(0), tag(0) { Set(initdata); }
+  BitUnion2(const B &initdata) : payload(0), tag(1) { Set(initdata); }
 
   bool IsA() const { return tag == 0; }
   bool IsB() const { return tag == 1; }
@@ -657,17 +687,17 @@ class BitUnion2 {
     return result.val;
   }
 
-  void Set(const A& data) {
+  void Set(const A &data) {
     Wrapped<A> wdata(data);
     Marshaller<Wrapped<A>::width> m;
     wdata.Marshall<Wrapped<A>::width>(m);
     payload = 0; //note, we could directly assign m.GetResult here. Assuming payload is wider, systemC would pad with zeros.
-                 //but if payload is narrower, systemc would silently truncate. We'd want to avoid that. Range below would 
-                 //fail if payload is narrower
+    //but if payload is narrower, systemc would silently truncate. We'd want to avoid that. Range below would
+    //fail if payload is narrower
     payload.range(Wrapped<A>::width - 1, 0) = m.GetResult();
     tag = 0;
   }
-  void Set(const B& data) {
+  void Set(const B &data) {
     Wrapped<B> wdata(data);
     Marshaller<Wrapped<B>::width> m;
     wdata.Marshall<Wrapped<B>::width>(m);
@@ -677,12 +707,12 @@ class BitUnion2 {
   }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-    m& payload;
-    m& tag;
+  void Marshall(Marshaller<Size> &m) {
+    m &payload;
+    m &tag;
   }
 
- protected:
+protected:
   /* Stores the value of the current Marshaller.*/
   sc_lv<larger_width> payload;
   /* Signal whether A or B is set (0 for A and 1 for B). */

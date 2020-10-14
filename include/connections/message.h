@@ -1,13 +1,13 @@
 
 /*
  * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -42,23 +42,24 @@
  * \endcode
  *
  */
-namespace Connections {
+namespace Connections
+{
 
-class message {
- public:
-  friend inline bool operator==(const message& lhs, const message& rhs) {
-    return false;
-  }
-
-  inline friend std::ostream& operator<<(ostream& os, const message& rhs)
+  class message
   {
-    os << "<unnamed_message>";
-    return os;
-  }
+  public:
+    friend inline bool operator==(const message &lhs, const message &rhs) {
+      return false;
+    }
 
-  inline friend void sc_trace(sc_core::sc_trace_file *& tf, const message& rhs, const std::string& NAME) {
-  }
-};
+    inline friend std::ostream &operator<<(ostream &os, const message &rhs) {
+      os << "<unnamed_message>";
+      return os;
+    }
+
+    inline friend void sc_trace(sc_core::sc_trace_file *&tf, const message &rhs, const std::string &NAME) {
+    }
+  };
 
 }
 

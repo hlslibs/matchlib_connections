@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Tue Oct 13 21:19:02 PDT 2020                        *
+ *  Release Date    : Wed Oct 14 16:17:32 PDT 2020                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.1                                               *
+ *  Release Build   : 1.2.2                                               *
  *                                                                        *
  *  Copyright , Mentor Graphics Corporation,                     *
  *                                                                        *
@@ -37,7 +37,7 @@
 //              with Catapult HLS
 //
 // Revision History:
-//    1.2.0 - 
+//    1.2.0 -
 //*****************************************************************************************
 
 #ifndef MC_CONNECTIONS_H

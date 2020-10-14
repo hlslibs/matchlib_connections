@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Tue Oct 13 21:19:02 PDT 2020                        *
+ *  Release Date    : Wed Oct 14 16:17:32 PDT 2020                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.1                                               *
+ *  Release Build   : 1.2.2                                               *
  *                                                                        *
  *  Copyright , Mentor Graphics Corporation,                     *
  *                                                                        *
@@ -32,7 +32,7 @@
  *************************************************************************/
 //*****************************************************************************************
 // Localize sc_trace and logging utilities for Connections classes
-// 
+//
 //
 // Revision History:
 //  1.2.0    - Refactored tracing from mc_connections.h
@@ -62,7 +62,8 @@ struct MyType
 // Function: trace_hierarchy(sc_object* obj, sc_trace_file* file_ptr)
 //  Trace all Connections signale types in the hierarchy
 //
-static inline void trace_hierarchy( sc_object *obj, sc_trace_file *file_ptr ) {
+static inline void trace_hierarchy( sc_object *obj, sc_trace_file *file_ptr )
+{
 #ifdef CONNECTIONS_SIM_ONLY
   if ( Connections::sc_trace_marker *p = dynamic_cast<Connections::sc_trace_marker *>(obj) ) {
     p->set_trace(file_ptr);

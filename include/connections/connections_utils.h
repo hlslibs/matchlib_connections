@@ -1,13 +1,13 @@
 
 /*
  * Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License")
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -32,7 +32,7 @@
 /**
  * \def CONNECTIONS_ASSERT_MSG(x, msg)
  * \ingroup Assertions
- * Synthesizable assertion to check \a x and print \a msg if assertion fails. It will be synthesized by Catapult HLS tool to either psl or ovl assertions in RTL depending on HLS tool settings 
+ * Synthesizable assertion to check \a x and print \a msg if assertion fails. It will be synthesized by Catapult HLS tool to either psl or ovl assertions in RTL depending on HLS tool settings
  * \par A Simple Example
  * \code
  *      #include <connections_utils.h>
@@ -105,7 +105,8 @@
 #define CONNECTIONS_CONCAT(s1,s2) (std::string(s1) + "_" + std::string(s2)).c_str()
 #endif
 
-namespace Connections {
+namespace Connections
+{
   // placeholder for utility code
 }
 
