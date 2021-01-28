@@ -2,7 +2,7 @@ set sfd [file dir [info script]]
 
 options defaults
 options set /Input/CppStandard c++11
-options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM}
+options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM -DCONNECTIONS_NAMING_ORIGINAL}
 
 project new
 

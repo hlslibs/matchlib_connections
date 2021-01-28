@@ -3,7 +3,7 @@
 CXXFLAGS += -g -std=c++11 -Wall -Wno-unknown-pragmas -Wno-unused-variable -Wno-unused-label
 
 # Must always use these user flags for this test, since it is cycle count dependent.
-USER_FLAGS := -DCONNECTIONS_ACCURATE_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES
+USER_FLAGS := -DCONNECTIONS_ACCURATE_SIM -DSC_INCLUDE_DYNAMIC_PROCESSES -DCONNECTIONS_NAMING_ORIGINAL
 
 # =====================================================================
 # ENVIRONMENT VARIABLES

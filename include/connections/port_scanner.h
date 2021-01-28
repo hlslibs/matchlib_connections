@@ -33,12 +33,10 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
 #ifndef _UTIL_DATNAME_
 // Port names defined in connections.h - but port_scanner also needs this
-#if defined(CONNECTIONS_NAMING_CATAPULT)
-#define _UTIL_DATNAME_ dat
-#elif defined(CONNECTIONS_NAMING_CATAPULT_RSC)
-#define _UTIL_DATNAME_ rsc_dat
-#else
+#if defined(CONNECTIONS_NAMING_ORIGINAL)
 #define _UTIL_DATNAME_ msg
+#else
+#define _UTIL_DATNAME_ dat
 #endif
 #endif
 
@@ -100,7 +98,16 @@ namespace Connections
     }
   };
 
-  __attribute__ ((noinline)) static int port_scan(const char *name, const char *fname)
+#ifdef __GNUC__
+#define _ATTRIB_NOINLINE_ __attribute__ ((noinline))
+#else
+#ifdef _MSC_VER
+#define _ATTRIB_NOINLINE_ __declspec(noinline)
+#else
+#define _ATTRIB_NOINLINE_
+#endif
+#endif
+  _ATTRIB_NOINLINE_ static int port_scan(const char *name, const char *fname)
   {
     if (!name) { return 0; }
     (void)port_scan(0, 0); // to get rid of unused function warnings
@@ -108,6 +115,8 @@ namespace Connections
     Connections::port_scanner p;
     return p.scan(name, fname);
   }
+
+#undef _ATTRIB_NOINLINE_
 #undef _UTIL_DATNAME_
 #endif // CONNECTIONS_SIM_ONLY
 

@@ -246,74 +246,7 @@ namespace Connections
 SpecialWrapperIfc(Connections::In);
 SpecialWrapperIfc(Connections::Out);
 
-#if defined(CONNECTIONS_NAMING_CATAPULT)
-#define _VLDNAME_ vld
-#define _RDYNAME_ rdy
-#define _DATNAME_ dat
-#define _VLDNAMESTR_ "vld"
-#define _RDYNAMESTR_ "rdy"
-#define _DATNAMESTR_ "dat"
-
-#define _VLDNAMEIN_ in_vld
-#define _RDYNAMEIN_ in_rdy
-#define _DATNAMEIN_ in_dat
-#define _VLDNAMEINSTR_ "in_vld"
-#define _RDYNAMEINSTR_ "in_rdy"
-#define _DATNAMEINSTR_ "in_dat"
-
-#define _VLDNAMEOUT_ out_vld
-#define _RDYNAMEOUT_ out_rdy
-#define _DATNAMEOUT_ out_dat
-#define _VLDNAMEOUTSTR_ "out_vld"
-#define _RDYNAMEOUTSTR_ "out_rdy"
-#define _DATNAMEOUTSTR_ "out_dat"
-
-#define _COMBVLDNAMESTR_ "comb_vld"
-#define _COMBRDYNAMESTR_ "comb_rdy"
-#define _COMBDATNAMESTR_ "comb_dat"
-
-#define _COMBVLDNAMEINSTR_ "comb_in_vld"
-#define _COMBRDYNAMEINSTR_ "comb_in_rdy"
-#define _COMBDATNAMEINSTR_ "comb_in_dat"
-#define _COMBVLDNAMEOUTSTR_ "comb_out_vld"
-#define _COMBRDYNAMEOUTSTR_ "comb_out_rdy"
-#define _COMBDATNAMEOUTSTR_ "comb_out_dat"
-
-#elif defined(CONNECTIONS_NAMING_CATAPULT_RSC)
-#define _VLDNAME_ rsc_vld
-#define _RDYNAME_ rsc_rdy
-#define _DATNAME_ rsc_dat
-#define _VLDNAMESTR_ "rsc_vld"
-#define _RDYNAMESTR_ "rsc_rdy"
-#define _DATNAMESTR_ "rsc_dat"
-
-#define _VLDNAMEIN_ rsc_in_vld
-#define _RDYNAMEIN_ rsc_in_rdy
-#define _DATNAMEIN_ rsc_in_dat
-#define _VLDNAMEINSTR_ "rsc_in_vld"
-#define _RDYNAMEINSTR_ "rsc_in_rdy"
-#define _DATNAMEINSTR_ "rsc_in_dat"
-
-#define _VLDNAMEOUT_ rsc_out_vld
-#define _RDYNAMEOUT_ rsc_out_rdy
-#define _DATNAMEOUT_ rsc_out_dat
-#define _VLDNAMEOUTSTR_ "rsc_out_vld"
-#define _RDYNAMEOUTSTR_ "rsc_out_rdy"
-#define _DATNAMEOUTSTR_ "rsc_out_dat"
-
-#define _COMBVLDNAMESTR_ "rsc_comb_vld"
-#define _COMBRDYNAMESTR_ "rsc_comb_rdy"
-#define _COMBDATNAMESTR_ "rsc_comb_dat"
-
-#define _COMBVLDNAMEINSTR_ "rsc_comb_in_vld"
-#define _COMBRDYNAMEINSTR_ "rsc_comb_in_rdy"
-#define _COMBDATNAMEINSTR_ "rsc_comb_in_dat"
-#define _COMBVLDNAMEOUTSTR_ "rsc_comb_out_vld"
-#define _COMBRDYNAMEOUTSTR_ "rsc_comb_out_rdy"
-#define _COMBDATNAMEOUTSTR_ "rsc_comb_out_dat"
-
-#else
-// Default is original nvidia naming
+#if defined(CONNECTIONS_NAMING_ORIGINAL)
 #define _VLDNAME_ val
 #define _RDYNAME_ rdy
 #define _DATNAME_ msg
@@ -346,7 +279,41 @@ SpecialWrapperIfc(Connections::Out);
 #define _COMBRDYNAMEOUTSTR_ "comb_out_rdy"
 #define _COMBDATNAMEOUTSTR_ "comb_out_msg"
 
+#else
+//  Default is catapult styl - rdy/vld/dat
+#define _VLDNAME_ vld
+#define _RDYNAME_ rdy
+#define _DATNAME_ dat
+#define _VLDNAMESTR_ "vld"
+#define _RDYNAMESTR_ "rdy"
+#define _DATNAMESTR_ "dat"
+
+#define _VLDNAMEIN_ in_vld
+#define _RDYNAMEIN_ in_rdy
+#define _DATNAMEIN_ in_dat
+#define _VLDNAMEINSTR_ "in_vld"
+#define _RDYNAMEINSTR_ "in_rdy"
+#define _DATNAMEINSTR_ "in_dat"
+
+#define _VLDNAMEOUT_ out_vld
+#define _RDYNAMEOUT_ out_rdy
+#define _DATNAMEOUT_ out_dat
+#define _VLDNAMEOUTSTR_ "out_vld"
+#define _RDYNAMEOUTSTR_ "out_rdy"
+#define _DATNAMEOUTSTR_ "out_dat"
+
+#define _COMBVLDNAMESTR_ "comb_vld"
+#define _COMBRDYNAMESTR_ "comb_rdy"
+#define _COMBDATNAMESTR_ "comb_dat"
+
+#define _COMBVLDNAMEINSTR_ "comb_in_vld"
+#define _COMBRDYNAMEINSTR_ "comb_in_rdy"
+#define _COMBDATNAMEINSTR_ "comb_in_dat"
+#define _COMBVLDNAMEOUTSTR_ "comb_out_vld"
+#define _COMBRDYNAMEOUTSTR_ "comb_out_rdy"
+#define _COMBDATNAMEOUTSTR_ "comb_out_dat"
 #endif
+
 
 namespace Connections
 {
