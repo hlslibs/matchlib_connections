@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Thu Jan 28 15:19:09 PST 2021                        *
+ *  Release Date    : Wed Mar 31 15:58:14 PDT 2021                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.3                                               *
+ *  Release Build   : 1.2.4                                               *
  *                                                                        *
  *  Copyright , Mentor Graphics Corporation,                     *
  *                                                                        *
@@ -35,6 +35,7 @@
 //
 //
 // Revision History:
+//  1.2.4    - CAT-26848: Add waveform tracing for Matchlib SyncChannel
 //  1.2.0    - Refactored tracing from mc_connections.h
 //
 //*****************************************************************************************
@@ -59,8 +60,27 @@ struct MyType
 
 **/
 
+#ifdef CONNECTIONS_SIM_ONLY
+namespace Connections 
+{
+  // Used to mark and select Connections Sync and Combinational channels for tracing
+  class sc_trace_marker
+  {
+  public:
+    virtual void set_trace(sc_trace_file *trace_file_ptr) = 0;
+    virtual bool set_log(std::ofstream *os, int &log_num, std::string &path_name) = 0;
+  };
+}
+#endif
+
 // Function: trace_hierarchy(sc_object* obj, sc_trace_file* file_ptr)
-//  Trace all Connections signale types in the hierarchy
+//  Trace all Connections signal types in the hierarchy
+//
+// Example usage in sc_main()
+//
+//  Top top("top");
+//  sc_trace_file *trace_file_ptr = sc_trace_statice::setup_trace_file("trace");
+//  trace_hierarchy(&top, trace_file_ptr);
 //
 static inline void trace_hierarchy( sc_object *obj, sc_trace_file *file_ptr )
 {

@@ -18,11 +18,13 @@
 // marshaller.h
 //
 // Revision History:
+//  1.2.4    - Add Connections marshaller support for ac_float
+//           - Reduce #include list, add mc_typeconv.h explicitly for re-entrant features
 //  1.2.0    - Fixed CAT-25473 - Sign bit needs to be handled properly in
 //             marshaller SpecialWrapper2
 //           - Added Sign to Type template parameters.
 //           - Add Connections support for ac_std_float and ac::bfloat16. CAT-25338
-//           - Remove ccs_p2p.h dependency from mashaller.h.
+//           - Remove ccs_p2p.h dependency from marshaller.h.
 //           - Make marshaller.h "re-entrant" to allow better flexibility
 //             for ordering include files.
 //           - Add connections support for sc_fixed, ac_fixed (>3 parameters),
@@ -31,14 +33,12 @@
 //
 //*****************************************************************************************
 
-#if !defined(__CONNECTIONS__MARSHALLER_H_)
-
 #include <systemc.h>
 #include <ccs_types.h>
-#include <connections/connections_sync.h>
-#include "connections/connections_utils.h"
-#include "connections/message.h"
+#include <mc_typeconv.h>
+#include "connections_utils.h"
 
+#if !defined(__CONNECTIONS__MARSHALLER_H_)
 //------------------------------------------------------------------------
 // Marshaller casting functions
 
@@ -457,38 +457,57 @@ Marshaller<Size> &operator&(Marshaller<Size> &m,  ac::bfloat16 &rhs)
   return m;
 }
 
-template <int W, int E>                \
+template <int W, int E>
 class Wrapped<ac_std_float<W,E> >
 {
-  \
-public:                                 \
+public:
   ac_std_float<W,E> val;
-  \
-  Wrapped() : val(0.0) {}                 \
-  Wrapped(const ac_std_float<W,E> &v) : val(v) {}      \
+  Wrapped() : val(0.0) {}
+  Wrapped(const ac_std_float<W,E> &v) : val(v) {}
   static const unsigned int width = W;
-  \
   static const bool is_signed = 1;
-  \
-  template <unsigned int Size>           \
+  template <unsigned int Size>
   void Marshall(Marshaller<Size> &m) {
-    \
     m &val;
-    \
-  }                                      \
+  }
 };
-\
-template <unsigned int Size, int W, int E>                                          \
+
+template <unsigned int Size, int W, int E>
 Marshaller<Size> &operator&(Marshaller<Size> &m, ac_std_float<W,E> &rhs)
 {
-  \
   m.template AddField<ac_std_float<W,E>, W > (rhs);
-  \
   return m;
-  \
 }
 
 #endif  // __AC_STD_FLOAT_H
+
+#if defined(__AC_FLOAT_H) && !defined(__MARSHALLER_AC_FLOAT_H)
+#define __MARSHALLER_AC_FLOAT_H
+template <int W, int I, int E, ac_q_mode Q>
+class Wrapped<ac_float<W,I,E,Q> >
+{
+public:
+  typedef ac_float<W,I,E,Q> Type;
+  Type val;
+  Wrapped() {}
+  Wrapped(const Type &v) : val(v) {}
+  static const unsigned int width = Type::width + Type::e_width;
+  static const bool is_signed = Type::sign;
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    m &val.m;
+    m &val.e;
+  }
+};
+template <unsigned int Size, int W, int I, int E, ac_q_mode Q>
+Marshaller<Size>& operator&(Marshaller<Size> &m, ac_float<W,I,E,Q> &rhs)
+{
+  typedef ac_float<W,I,E,Q> Type;
+  m.template AddField<Type::mant_t, Type::width>(rhs.m);
+  m.template AddField<Type::exp_t, Type::e_width>(rhs.e);
+  return m;
+}
+#endif //__MARSHALLER_AC_FLOAT_H
 
 #if defined(__AC_COMPLEX_H) && !defined(__MARSHALLER_AC_COMPLEX_H)
 #define __MARSHALLER_AC_COMPLEX_H

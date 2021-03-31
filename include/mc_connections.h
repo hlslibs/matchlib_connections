@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Thu Jan 28 15:19:09 PST 2021                        *
+ *  Release Date    : Wed Mar 31 15:58:14 PDT 2021                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.3                                               *
+ *  Release Build   : 1.2.4                                               *
  *                                                                        *
  *  Copyright , Mentor Graphics Corporation,                     *
  *                                                                        *
@@ -56,9 +56,9 @@
 #endif
 
 #include <systemc.h>
-#include <connections/connections_utils.h>
+#include <ac_sysc_macros.h>
+#include <ac_sysc_trace.h>
 #include <connections/connections.h>
-#include <connections/connections_trace.h>
 #include <connections/connections_sync.h>
 #include <connections/port_scanner.h>
 

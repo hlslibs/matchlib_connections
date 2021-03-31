@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Thu Jan 28 15:19:09 PST 2021                        *
+ *  Release Date    : Wed Mar 31 15:58:14 PDT 2021                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.3                                               *
+ *  Release Build   : 1.2.4                                               *
  *                                                                        *
  *  Copyright , Mentor Graphics Corporation,                     *
  *                                                                        *
@@ -38,6 +38,7 @@
 //
 //
 // Revision History:
+//  1.2.4    - CAT-26848: Add waveform tracing for Matchlib SyncChannel
 //  1.2.1    - Corrected p2p_checker to be sync_checker
 //  1.2.0    - Refactored "sync" connections from mc_connections.h
 //
@@ -51,6 +52,8 @@
 #endif
 
 #include <systemc.h>
+#include "connections_utils.h"
+#include "connections_trace.h"
 
 namespace Connections
 {
@@ -89,7 +92,8 @@ namespace Connections
   class conn_sync
   {
   public:
-    class chan
+    #pragma hls_ungroup
+    class chan : public sc_module
     {
       sync_checker rd_chk, wr_chk;
 
@@ -98,11 +102,12 @@ namespace Connections
       sc_signal <bool> rdy ;
       static const unsigned int width=0;
 
-      chan(sc_module_name name = sc_gen_unique_name("p2p_sync_chan"))
-        : rd_chk(name, "call reset_sync_out()", "synchronize from this channel")
+      chan(sc_module_name name = sc_gen_unique_name("conn_sync_chan"))
+        : sc_module(name)
+        , rd_chk(name, "call reset_sync_out()", "synchronize from this channel")
         , wr_chk(name, "call reset_sync_in()", "synchronize to this channel")
-        , vld( ccs_concat(name,"vld") )
-        , rdy( ccs_concat(name,"rdy") )
+        , vld( CONNECTIONS_CONCAT(name,"vld") )
+        , rdy( CONNECTIONS_CONCAT(name,"rdy") )
       {}
 
       void reset_sync_out() {
@@ -154,10 +159,10 @@ namespace Connections
       sc_out <bool> rdy ;
       static const unsigned int width=0;
 
-      in(sc_module_name name = sc_gen_unique_name("p2p_sync_in"))
+      in(sc_module_name name = sc_gen_unique_name("conn_sync_in"))
         : rd_chk(name, "call reset_sync_in()", "synchronize from this port")
-        , vld( ccs_concat(name,"vld") )
-        , rdy( ccs_concat(name,"rdy") )
+        , vld( CONNECTIONS_CONCAT(name,"vld") )
+        , rdy( CONNECTIONS_CONCAT(name,"rdy") )
       {}
 
       void reset_sync_in() {
@@ -205,10 +210,10 @@ namespace Connections
       sc_in <bool> rdy ;
       static const unsigned int width=0;
 
-      out(sc_module_name name = sc_gen_unique_name("p2p_sync_out"))
+      out(sc_module_name name = sc_gen_unique_name("conn_sync_out"))
         : wr_chk(name, "call reset_sync_out()", "synchronize to this port")
-        , vld( ccs_concat(name,"vld") )
-        , rdy( ccs_concat(name,"rdy") )
+        , vld( CONNECTIONS_CONCAT(name,"vld") )
+        , rdy( CONNECTIONS_CONCAT(name,"rdy") )
       {}
 
       void reset_sync_out() {
@@ -320,6 +325,9 @@ namespace Connections
   };
 
   class SyncChannel: public conn_sync::chan
+#ifdef CONNECTIONS_SIM_ONLY
+        , public Connections::sc_trace_marker
+#endif
   {
   private:
     typedef conn_sync::chan  Base;
@@ -360,6 +368,14 @@ namespace Connections
       }
       return (theName);
     }
+
+    virtual void set_trace(sc_trace_file* fp)
+    {
+      sc_trace(fp, this->rdy, this->rdy.name());
+      sc_trace(fp, this->vld, this->vld.name());
+    }
+
+    virtual bool set_log(std::ofstream* os, int& log_num, std::string& path_name) { return false; }
 #endif
   };
 

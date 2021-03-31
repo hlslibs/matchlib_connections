@@ -18,6 +18,9 @@
 // connections.h
 //
 // Revision History:
+//   1.2.4   - Default to CONNECTIONS_ACCURATE_SIM. Add CONNECTIONS_SYN_SIM instead of
+//             relying on an implicit mode with no sim setting.
+//           - CAT-26848: Add waveform tracing for Matchlib SyncChannel
 //   1.2.0   - Added support for multiple clocks
 //
 //*****************************************************************************************
@@ -25,21 +28,39 @@
 #ifndef __CONNECTIONS__CONNECTIONS_H__
 #define __CONNECTIONS__CONNECTIONS_H__
 
+#if !defined(__SYNTHESIS__)
+// Simulation modes:
+// CONNECTIONS_ACCURATE_SIM Cycle-accurate view of Connections port and channel code. (default)
+// CONNECTIONS_FAST_SIM     Faster TLM view of Connections port and channel code.
+// CONNECTIONS_SYN_SIM      Synthesis view of Connections port and combinational code. Debug only mode.
+
+#if !(defined(CONNECTIONS_ACCURATE_SIM) || defined(CONNECTIONS_FAST_SIM) || defined(CONNECTIONS_SYN_SIM))
+#define CONNECTIONS_ACCURATE_SIM
+#endif
+
 #if defined(CONNECTIONS_ACCURATE_SIM) && defined(CONNECTIONS_FAST_SIM)
 #error "Both CONNECTIONS_ACCURATE_SIM and CONNECTIONS_FAST_SIM are defined. Define one or the other."
 #endif
 
-#if defined(CONN_RAND_STALL) && !defined(__SYNTHESIS__) && !(defined(CONNECTIONS_ACCURATE_SIM) || defined(CONNECTIONS_FAST_SIM))
+#if defined(CONN_RAND_STALL) && !(defined(CONNECTIONS_ACCURATE_SIM) || defined(CONNECTIONS_FAST_SIM))
 #warning "Warning: CONN_RAND_STALL only works in CONNECTIONS_ACCURATE_SIM and CONNECTIONS_FAST_SIM modes!"
 #endif
 
-#if !defined(__SYNTHESIS__) && (defined(CONNECTIONS_ACCURATE_SIM) || defined(CONNECTIONS_FAST_SIM))
+#if defined(CONNECTIONS_ACCURATE_SIM) || defined(CONNECTIONS_FAST_SIM)
 #define CONNECTIONS_SIM_ONLY
-#ifndef SC_INCLUDE_DYNAMIC_PROCESSES
-#error \
-"Make sure SC_INCLUDE_DYNAMIC_PROCESSES is defined BEFORE first systemc.h include"
+#if !defined(SC_INCLUDE_DYNAMIC_PROCESSES)
+#error "Make sure SC_INCLUDE_DYNAMIC_PROCESSES is defined BEFORE first systemc.h include"
+#endif
+#if defined(CONNECTIONS_SYN_SIM)
+#warning "CONNECTIONS_SYN_SIM cannot be used with CONNECTIONS_ACCURATE_SIM or CONNECTIONS_FAST_SIM"
+#undef CONNECTIONS_SYN_SIM
 #endif
 #endif
+
+#if defined(CONNECTIONS_SYN_SIM)
+#warning "Caution: Synthesis simulation mode is not cycle accurate with multiple wait() statements across IO"
+#endif
+#endif //__SYNTHESIS__
 
 #ifdef CONNECTIONS_ASSERT_ON_QUERY
 #define QUERY_CALL() \
@@ -49,21 +70,18 @@
 #endif
 
 #include <systemc.h>
-#include "ac_sysc_macros.h"
-#include "ac_sysc_trace.h"
-
 #include "marshaller.h"
-
-#ifndef __SYNTHESIS__
-#include <iomanip>
-#endif
+#include "connections_utils.h"
+#include "connections_trace.h"
+#include "message.h"
 
 #ifdef CONNECTIONS_SIM_ONLY
+#include <iomanip>
 #include <vector>
 #include <map>
-#include "Pacer.h"
 #include <tlm.h>
 #include <sysc/kernel/sc_reset.h>
+#include "Pacer.h"
 #endif
 
 /**
@@ -4510,17 +4528,6 @@ namespace Connections
 #endif
     }
   };
-
-#ifdef CONNECTIONS_SIM_ONLY
-  class sc_trace_marker
-  {
-  public:
-    virtual void set_trace(sc_trace_file *trace_file_ptr) = 0;
-    virtual bool set_log(std::ofstream *os, int &log_num, std::string &path_name) = 0;
-  };
-#endif
-
-
 
   template <typename Message>
   class Combinational <Message, MARSHALL_PORT> : public Combinational_SimPorts_abs<Message, MARSHALL_PORT>

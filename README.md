@@ -3,7 +3,7 @@ MatchLib Connections
 MatchLib Connections is a SystemC library implementing latency-insensitive channels for use by
 High-Level synthesis tools.
 
-Documentation on the Connections latency-insensitive channel implementation can be found in the [Connections Guide](doc/connections-guide.pdf).
+Documentation on the Connections latency-insensitive channel implementation can be found in the [Connections Guide](pdfdocs/connections-guide.pdf).
 
 Connections has been used as a component of the [MatchLib](https://github.com/NVlabs/matchlib) hardware component library.
 For more documentation about compiling and running Connections components, see the MatchLib documentation.
