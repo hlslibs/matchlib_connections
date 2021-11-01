@@ -4,14 +4,12 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Wed Mar 31 15:58:14 PDT 2021                        *
+ *  Release Date    : Mon Nov  1 06:21:05 PDT 2021                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.4                                               *
+ *  Release Build   : 1.2.6                                               *
  *                                                                        *
- *  Copyright , Mentor Graphics Corporation,                     *
+ *  Copyright 2020 Siemens                                                *
  *                                                                        *
- *  All Rights Reserved.                                                  *
- *  
  **************************************************************************
  *  Licensed under the Apache License, Version 2.0 (the "License");       *
  *  you may not use this file except in compliance with the License.      * 

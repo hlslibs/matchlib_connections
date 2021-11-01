@@ -1,4 +1,6 @@
 
+
+
 /*
  * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  *
@@ -18,6 +20,8 @@
 // connections.h
 //
 // Revision History:
+//   1.2.6   - CAT-29206 - fix for waveform tracing
+//             CAT-29244 - improved error checking
 //   1.2.4   - Default to CONNECTIONS_ACCURATE_SIM. Add CONNECTIONS_SYN_SIM instead of
 //             relying on an implicit mode with no sim setting.
 //           - CAT-26848: Add waveform tracing for Matchlib SyncChannel
@@ -354,13 +358,11 @@ namespace Connections
 #endif
     {}
 
-    void reset() {
+    void reset(bool non_leaf_port) {
       is_reset = true;
-    }
 
-    void check() {
+      if (non_leaf_port) {
 #ifndef __SYNTHESIS__
-      if (!is_reset) {
         std::string name = this->name;
         if (is_val_name) {
           std::string nameSuff = "_";
@@ -371,12 +373,32 @@ namespace Connections
           // Add in hierarchcy to name
           name = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + this->name;
         }
-        SC_REPORT_WARNING("CONNECTIONS-101", ("Port or channel " + name + " wasn't reset! In thread or process '" \
-                                              + std::string(sc_core::sc_get_current_process_b()->basename()) \
-                                              + "'.").c_str());
+        SC_REPORT_ERROR("CONNECTIONS-102", ("Port " + name +
+              " was reset but it is a non-leaf port. In thread or process '" 
+              + std::string(sc_core::sc_get_current_process_b()->basename()) + "'.").c_str());
+#endif
+      }
+    }
+
+    void check() {
+      if (!is_reset) {
+#ifndef __SYNTHESIS__
+        std::string name = this->name;
+        if (is_val_name) {
+          std::string nameSuff = "_";
+          nameSuff += _VLDNAMESTR_;
+          unsigned int suffLen = nameSuff.length();
+          if (name.substr(name.length() - suffLen,suffLen) == nameSuff) { name.erase(name.length() - suffLen,suffLen); }
+        } else {
+          // Add in hierarchcy to name
+          name = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + this->name;
+        }
+        SC_REPORT_WARNING("CONNECTIONS-101", ("Port or channel " + name +
+            " wasn't reset! In thread or process '" 
+            + std::string(sc_core::sc_get_current_process_b()->basename()) + "'.").c_str());
+#endif
         is_reset = true;
       }
-#endif
     }
 
     void set_val_name(const char *name_) {
@@ -533,13 +555,14 @@ namespace Connections
   class Blocking_abs
   {
   public:
-    Blocking_abs() { clock_registered=false; sibling_port=0; };
+    Blocking_abs() { clock_registered=false; sibling_port=0; non_leaf_port=false;};
 
     virtual bool Post() {return false;};
     virtual bool Pre()  {return false;};
     virtual bool PrePostReset()  {return false;};
     virtual std::string full_name() { return "unnamed"; }
     bool clock_registered;
+    bool non_leaf_port;
     int  clock_number;
     virtual void do_reset_check() {}
     Blocking_abs *sibling_port;
@@ -693,7 +716,7 @@ namespace Connections
           const sc_object *ob = dynamic_cast<const sc_object *>(tracked[i]);
           std::string nm(ob?ob->name():"unnamed");
           SC_REPORT_ERROR("CONNECTIONS-115",
-                          (std::string("Unregistered Blocking_abs!: " + nm + " " + tracked[i]->full_name()).c_str()));
+                          (std::string("Unregistered connections port - check and fix any prior warnings about missing Reset() on ports: " + nm + " " + tracked[i]->full_name()).c_str()));
         }
       }
 
@@ -749,12 +772,32 @@ namespace Connections
       if (clk == 0) {
         SC_REPORT_ERROR("CONNECTIONS-111",
                         (std::string("Failed to find sc_clock for process: " + std::string(h.name())).c_str()));
+        SC_REPORT_ERROR("CONNECTIONS-111", "Stopping sim due to fatal error.");
+        sc_stop();
+        return;
       }
 
       --clk; // undo +1 encoding for errors
 
       tracked_per_clk[clk]->push_back(c);
       c->clock_number = clk;
+
+      sc_clock* clk_ptr = get_sim_clk().clk_info_vector[clk].clk_ptr;
+      if (!clk_ptr->posedge_first()) {
+                std::ostringstream ss;
+                ss << "clk posedge_first() != true : process: "
+                   << h.name() << " "
+                   << "\n";
+                SC_REPORT_ERROR("CONNECTIONS-303", ss.str().c_str());
+      }
+
+      if (clk_ptr->start_time().value() % clk_ptr->period().value()) {
+                std::ostringstream ss;
+                ss << "clk start_time is not a multiple of clk period: process: "
+                   << h.name() << " "
+                   << "\n";
+                SC_REPORT_ERROR("CONNECTIONS-304", ss.str().c_str());
+      }
 
       class my_reset : public sc_reset
       {
@@ -1507,7 +1550,11 @@ namespace Connections
   public:
     // Reset read
     virtual void Reset() {
-      this->read_reset_check.reset();
+#ifdef CONNECTIONS_SIM_ONLY
+      this->read_reset_check.reset(this->non_leaf_port);
+#else
+      this->read_reset_check.reset(false);
+#endif
       _RDYNAME_.write(false);
 #ifdef CONNECTIONS_SIM_ONLY
       get_conManager().add_clock_event(this);
@@ -1519,6 +1566,7 @@ namespace Connections
     }
 
 // Pop
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() {
       // this->read_reset_check.check();
@@ -1555,6 +1603,7 @@ namespace Connections
     }
 
 // PopNB
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data, const bool &do_wait = true) {
       // this->read_reset_check.check();
@@ -1605,7 +1654,7 @@ namespace Connections
     // Reset read
     void Reset() {
 #ifdef CONNECTIONS_SIM_ONLY
-      this->read_reset_check.reset();
+      this->read_reset_check.reset(this->non_leaf_port);
       Reset_SIM();
       get_conManager().add_clock_event(this);
 #else
@@ -2128,6 +2177,7 @@ namespace Connections
     void Bind(InBlocking<Message, MARSHALL_PORT> &rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -2160,6 +2210,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(dynamic_d2mport->msgbits);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -2292,6 +2343,7 @@ namespace Connections
     void Bind(InBlocking<Message, MARSHALL_PORT> &rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -2339,6 +2391,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(dynamic_d2mport->msgbits);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -2458,6 +2511,7 @@ namespace Connections
     void Bind(InBlocking<Message, DIRECT_PORT> &rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -2515,7 +2569,7 @@ namespace Connections
 
     // Reset read
     void Reset() {
-      this->read_reset_check.reset();
+      this->read_reset_check.reset(this->non_leaf_port);
       Message temp;
       while (i_fifo->nb_get(temp));
     }
@@ -2799,7 +2853,11 @@ namespace Connections
 
     // Reset write
     void Reset() {
-      this->write_reset_check.reset();
+#ifdef CONNECTIONS_SIM_ONLY
+      this->write_reset_check.reset(this->non_leaf_port);
+#else
+      this->write_reset_check.reset(false);
+#endif
       _VLDNAME_.write(false);
       reset_msg();
 #ifdef CONNECTIONS_SIM_ONLY
@@ -2812,6 +2870,7 @@ namespace Connections
     }
 
 // Push
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) {
       // this->write_reset_check.check();
@@ -2827,6 +2886,7 @@ namespace Connections
     }
 
 // PushNB
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m, const bool &do_wait = true) {
       // this->write_reset_check.check();
@@ -2882,7 +2942,7 @@ namespace Connections
     // Reset write
     void Reset() {
 #ifdef CONNECTIONS_SIM_ONLY
-      this->write_reset_check.reset();
+      this->write_reset_check.reset(this->non_leaf_port);
       Reset_SIM();
       get_conManager().add_clock_event(this);
 #else
@@ -3082,6 +3142,7 @@ namespace Connections
     void Bind(OutBlocking<Message, MARSHALL_PORT> &rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -3111,6 +3172,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
 
       this->_DATNAME_(dynamic_m2dport->msgbits);
@@ -3265,6 +3327,7 @@ namespace Connections
     void Bind(OutBlocking<Message, MARSHALL_PORT> &rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
       rhs.driver = this;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
@@ -3297,6 +3360,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
 
       this->_DATNAME_(dynamic_m2dport->msgbits);
@@ -3441,6 +3505,7 @@ namespace Connections
     void Bind(OutBlocking<Message, DIRECT_PORT> &rhs) {
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -3470,6 +3535,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
+      rhs.non_leaf_port = true;
 #endif
 
       this->_DATNAME_(dynamic_d2mport->_DATNAME_);
@@ -3537,7 +3603,7 @@ namespace Connections
 
     // Reset write
     void Reset() {
-      this->write_reset_check.reset();
+      this->write_reset_check.reset(this->non_leaf_port);
     }
 
     void do_reset_check() {
@@ -3812,12 +3878,12 @@ namespace Connections
   public:
     // Reset
     void ResetRead() {
-      this->read_reset_check.reset();
+      this->read_reset_check.reset(false);
       _RDYNAME_.write(false);
     }
 
     void ResetWrite() {
-      this->write_reset_check.reset();
+      this->write_reset_check.reset(false);
       _VLDNAME_.write(false);
       reset_msg();
     }
@@ -3828,6 +3894,7 @@ namespace Connections
     }
 
 // Pop
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() {
       // this->read_reset_check.check();
@@ -3860,6 +3927,7 @@ namespace Connections
     }
 
 // PopNB
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data) {
       // this->read_reset_check.check();
@@ -3878,6 +3946,7 @@ namespace Connections
 //  bool Empty() { return !val.read(); }
 
 // Push
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) {
       // this->write_reset_check.check();
@@ -3893,6 +3962,7 @@ namespace Connections
     }
 
 // PushNB
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m) {
       // this->write_reset_check.check();
@@ -4021,7 +4091,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! out_bound); */
 
-      this->read_reset_check.reset();
+      this->read_reset_check.reset(false);
       get_conManager().add_clock_event(this);
 
       sim_in.Reset();
@@ -4035,7 +4105,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! in_bound); */
 
-      this->write_reset_check.reset();
+      this->write_reset_check.reset(false);
       get_conManager().add_clock_event(this);
 
       sim_out.Reset();
@@ -4467,6 +4537,7 @@ namespace Connections
     }
 
 // Pop
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() {
       return Combinational_Ports_abs<Message>::Pop();
@@ -4479,18 +4550,21 @@ namespace Connections
     }
 
 // PopNB
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data) {
       return Combinational_Ports_abs<Message>::PopNB(data);
     }
 
 // Push
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) {
       Combinational_Ports_abs<Message>::Push(m);
     }
 
 // PushNB
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m) {
       return Combinational_Ports_abs<Message>::PushNB(m);
@@ -4707,7 +4781,9 @@ namespace Connections
         sc_trace(trace_file_ptr, parent._RDYNAMEOUT_, parent._RDYNAMEOUT_.name());
 
         if (!parent.driver) {
-          sc_trace(trace_file_ptr, parent.traced_msg, parent._DATNAMEOUT_.name());
+          // this case occurs for "port-less channel access", ie comb_chan.Push(val)
+          OutBlocking<Message, MARSHALL_PORT> *driver = &(parent.sim_out);
+          driver->set_trace(trace_file_ptr, parent._DATNAMEOUT_.name());
         } else {
           OutBlocking<Message, MARSHALL_PORT> *driver = parent.driver;
           while (driver->driver)
@@ -4911,14 +4987,14 @@ namespace Connections
 
     // Reset
     void ResetRead() {
-      this->read_reset_check.reset();
+      this->read_reset_check.reset(false);
       get_conManager().add_clock_event(this);
       Message temp;
       while (fifo.nb_get(temp));
     }
 
     void ResetWrite() {
-      this->write_reset_check.reset();
+      this->write_reset_check.reset(false);
       get_conManager().add_clock_event(this);
     }
 

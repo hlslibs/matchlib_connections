@@ -1,4 +1,5 @@
 
+
 /*
  * Copyright (c) 2017-2019, NVIDIA CORPORATION.  All rights reserved.
  *
@@ -18,6 +19,7 @@
 // marshaller.h
 //
 // Revision History:
+//  1.2.6    - CAT-29221
 //  1.2.4    - Add Connections marshaller support for ac_float
 //           - Reduce #include list, add mc_typeconv.h explicitly for re-entrant features
 //  1.2.0    - Fixed CAT-25473 - Sign bit needs to be handled properly in
@@ -37,6 +39,14 @@
 #include <ccs_types.h>
 #include <mc_typeconv.h>
 #include "connections_utils.h"
+
+// Max number of bits we can marshall. Beyond 10k tends to cause segfaults in connections code
+// since objects get allocated on C stack, so very large objects cause stack overflows
+// Keep in mind anything that is marshalled directly represents wires/registers in HW,
+// so 10k limit is plenty for an individual port on a module, which is what this represents.
+#ifndef MARSHALL_LIMIT
+#define MARSHALL_LIMIT 10000
+#endif
 
 #if !defined(__CONNECTIONS__MARSHALLER_H_)
 //------------------------------------------------------------------------
@@ -117,6 +127,10 @@ public:
    *     convert bits to type. */
   Marshaller() : glob(0), cur_idx(0), is_marshalling(true) {}
   Marshaller(sc_lv<Size> v) : glob(v), cur_idx(0), is_marshalling(false) {}
+
+#ifndef __SYNTHESIS__
+  static_assert(Size < MARSHALL_LIMIT, "Size must be less than MARSHALL_LIMIT");
+#endif
 
   /* Add a field to the glob, or extract it. */
   template <typename T, int FieldSize>
@@ -536,6 +550,67 @@ Marshaller<Size> &operator&(Marshaller<Size> &m, ac_complex<T> &rhs)
   return m;
 }
 #endif  // __AC_COMPLEX_H
+
+#if defined(_INCLUDED_AC_ARRAY_H_) && !defined(__MARSHALLER_INCLUDED_AC_ARRAY_H_)
+#define __MARSHALLER_INCLUDED_AC_ARRAY_H_
+//No dims specialization
+template<typename T>
+class Wrapped<ac_array<T,0,0,0> >
+{
+public:
+  typedef ac_array<T,0,0,0> Type;
+  typedef Wrapped<T> WType;
+  Type val; 
+  Wrapped() {}
+  Wrapped(const Type &v) {
+    val[0] = v[0];
+  }
+  static const unsigned int width = WType::width;
+  static const bool is_signed = WType::is_signed;
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    m &val[0];
+  }
+};
+template<unsigned int Size, typename T>
+Marshaller<Size>& operator&(Marshaller<Size> &m, ac_array<T,0,0,0> &rhs)
+{
+  m &rhs[0];
+  return m;
+}
+
+template<typename T, unsigned D1, unsigned D2, unsigned D3>
+class Wrapped<ac_array<T, D1, D2, D3> >
+{
+public:
+  typedef ac_array<T, D1, D2, D3> Type;
+  typedef ac_array<T, D2, D3> FType;
+  typedef Wrapped<FType> WType;
+  Type val; 
+  Wrapped() {}
+  Wrapped(const Type &v) {
+    for (unsigned i=0; i<D1; i++) {
+      val[i] = v[i];
+    }
+  }
+  static const unsigned int width = WType::width * D1;
+  static const bool is_signed = WType::is_signed;
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    for (unsigned i=0; i<D1; i++) {
+      m &val[i];
+    }
+  }
+};
+template<unsigned int Size, typename T, unsigned D1, unsigned D2, unsigned D3>
+Marshaller<Size>& operator&(Marshaller<Size> &m, ac_array<T, D1, D2, D3> &rhs)
+{
+  for (unsigned i=0; i<D1; i++) {
+    m &rhs[i];
+  }
+  return m;
+}
+#endif //_INCLUDED_AC_ARRAY_H_
 
 #if defined( __CCS_P2P_H) && !defined(__MARSHALLER_CCS_P2P_H)
 #define __MARSHALLER_CCS_P2P_H
