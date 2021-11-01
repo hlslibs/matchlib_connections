@@ -4,7 +4,7 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Mon Nov  1 06:21:05 PDT 2021                        *
+ *  Release Date    : Mon Nov  1 15:13:04 PDT 2021                        *
  *  Release Type    : Production Release                                  *
  *  Release Build   : 1.2.6                                               *
  *                                                                        *
