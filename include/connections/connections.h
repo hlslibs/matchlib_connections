@@ -953,6 +953,15 @@ namespace Connections
     static ConManager conManager;
     static bool rand_stall_enable;
     static bool rand_stall_print_debug_enable;
+    static unsigned int rand_stall_seed;
+    static bool rand_stall_seed_init;
+    static bool set_rand_stall_seed() { 
+      if ( rand_stall_enable && !!rand_stall_seed ) {
+        srand(rand_stall_seed);
+        return true;
+      }
+      return false;
+    }
   };
 
   inline void set_sim_clk(sc_clock *clk_ptr)
@@ -993,6 +1002,16 @@ namespace Connections
   template <class Dummy>
   bool ConManager_statics<Dummy>::rand_stall_print_debug_enable = false;
 #endif // ifdef CONN_RAND_STALL_PRINT_DEBUG
+
+#if defined(RAND_SEED)
+  template <class Dummy>
+  unsigned int ConManager_statics<Dummy>::rand_stall_seed = static_cast<unsigned int>(RAND_SEED);
+#elif defined(USE_TIME_RAND_SEED)
+  template <class Dummy>
+  unsigned int ConManager_statics<Dummy>::rand_stall_seed = static_cast<unsigned int>(time(NULL));
+#endif
+  template <class Dummy>
+  bool ConManager_statics<Dummy>::rand_stall_seed_init = ConManager_statics<Dummy>::set_rand_stall_seed();
 
   inline bool &get_rand_stall_enable()
   {

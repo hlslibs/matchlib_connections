@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Mon Nov  1 15:18:03 PDT 2021                        *
+ *  Release Date    : Wed Jan 19 16:28:13 PST 2022                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.6                                               *
+ *  Release Build   : 1.2.7                                               *
  *                                                                        *
  *  Copyright 2020 Siemens                                                *
  *                                                                        *
@@ -58,6 +58,7 @@
 #include <ac_sysc_trace.h>
 #include <connections/connections.h>
 #include <connections/connections_sync.h>
+#include <connections/connections_fifo.h>
 #include <connections/port_scanner.h>
 
 #endif

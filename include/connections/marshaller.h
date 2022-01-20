@@ -153,14 +153,6 @@ public:
     CONNECTIONS_SIM_ONLY_ASSERT_MSG(cur_idx==Size, "Size doesn't match current index. Is a message's width enum missing an element, and are all fields marshalled?");
     return glob.range(Size - 1, 0);
   }
-
-  /* Operator &.
-   * T needs to have a Marshall() function defined. */
-  template <typename T>
-  Marshaller<Size> &operator&(T &rhs) {
-    rhs.Marshall(*this);
-    return *this;
-  }
 };
 
 /**
@@ -196,6 +188,13 @@ public:
     val.template Marshall<Size>(m);
   }
 };
+
+/* User defined T needs to have a Marshall() function defined. */
+template <unsigned int Size, typename T>
+Marshaller<Size> &operator&(Marshaller<Size> &m, T &rhs) {
+  rhs.Marshall(m);
+  return m;
+}
 
 /* Wrapped class specialization for sc_lv.  */
 template <int Width>
@@ -238,7 +237,7 @@ class Wrapped<Type> {                    \
 };                                       \
 template <unsigned int Size>             \
 Marshaller<Size>& operator&(Marshaller<Size>& m, Type& rhs) { \
-  m.template AddField<Type, Sizeof>(rhs);               \
+  m.template AddField<Type, Sizeof>(rhs);                     \
   return m;                                                   \
 }
 MarshallBasicTypes(bool,0,1);
@@ -275,7 +274,7 @@ MarshallBasicTypes(unsigned long long,0,64);
     return m;                                                     \
   }
 
-#define SpecialUnsignedWrapper(Type)                                         \
+#define SpecialUnsignedWrapper(Type)                                 \
   template <int Width>                                               \
   class Wrapped<Type<Width> > {                                      \
    public:                                                           \
@@ -296,7 +295,7 @@ MarshallBasicTypes(unsigned long long,0,64);
     return m;                                                        \
   }
 
-#define SpecialSignedWrapper(Type)                                         \
+#define SpecialSignedWrapper(Type)                                   \
   template <int Width>                                               \
   class Wrapped<Type<Width> > {                                      \
    public:                                                           \
@@ -321,9 +320,9 @@ MarshallBasicTypes(unsigned long long,0,64);
   template <int Width, bool Sign>                                          \
   class Wrapped<Type<Width, Sign> > {                                      \
    public:                                                                 \
-    Type<Width, Sign> val;                                                       \
+    Type<Width, Sign> val;                                                 \
     Wrapped() {}                                                           \
-    Wrapped(const Type<Width, Sign>& v) : val(v) {}                              \
+    Wrapped(const Type<Width, Sign>& v) : val(v) {}                        \
     static const unsigned int width = Width;                               \
     static const bool is_signed = Sign;                                    \
     template <unsigned int Size>                                           \
@@ -396,7 +395,7 @@ SpecialWrapperIfc(sc_signal);
 #if defined(SC_FIXED_H) && !defined(__MARSHALLER_SC_FIXED_H)
 #define __MARSHALLER_SC_FIXED_H
 
-#define SpecialSyscFixedWrapper(Type, Sign)                      \
+#define SpecialSyscFixedWrapper(Type, Sign)                  \
 template <int W, int I, sc_q_mode Q, sc_o_mode O, int N>     \
   class Wrapped<Type<W,I,Q,O,N> > {                          \
  public:                                                     \

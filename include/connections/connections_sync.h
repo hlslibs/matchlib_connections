@@ -4,9 +4,9 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Mon Nov  1 15:18:03 PDT 2021                        *
+ *  Release Date    : Wed Jan 19 16:28:13 PST 2022                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.6                                               *
+ *  Release Build   : 1.2.7                                               *
  *                                                                        *
  *  Copyright 2020 Siemens                                                *
  *                                                                        *
@@ -37,7 +37,7 @@
 //
 // Revision History:
 //  1.2.4    - CAT-26848: Add waveform tracing for Matchlib SyncChannel
-//  1.2.1    - Corrected p2p_checker to be sync_checker
+//  1.2.1    - Corrected conn_checker to be sync_checker
 //  1.2.0    - Refactored "sync" connections from mc_connections.h
 //
 //*****************************************************************************************
@@ -87,6 +87,7 @@ namespace Connections
     }
   };
 
+  // Dataless rdy/vld sync handshake
   class conn_sync
   {
   public:
@@ -96,8 +97,8 @@ namespace Connections
       sync_checker rd_chk, wr_chk;
 
     public:
-      sc_signal <bool> vld ;
-      sc_signal <bool> rdy ;
+      sc_signal <bool> vld;
+      sc_signal <bool> rdy;
       static const unsigned int width=0;
 
       chan(sc_module_name name = sc_gen_unique_name("conn_sync_chan"))
@@ -117,7 +118,7 @@ namespace Connections
         rd_chk.ok();
       }
 
-#pragma design modulario<sync>
+      #pragma design modulario<sync>
       bool nb_sync_in() {
         rd_chk.test();
         rdy.write(true);
@@ -126,17 +127,17 @@ namespace Connections
         return vld.read();
       }
 
-#pragma design modulario<sync>
+      #pragma design modulario<sync>
       void sync_in() {
         rd_chk.test();
         do {
-          rdy.write(true) ;
-          wait() ;
+          rdy.write(true);
+          wait();
         } while (vld.read() != true );
         rdy.write(false);
       }
 
-#pragma design modulario<sync>
+      #pragma design modulario<sync>
       void sync_out() {
         wr_chk.test();
         do {
@@ -153,8 +154,8 @@ namespace Connections
       sync_checker rd_chk;
 
     public:
-      sc_in <bool> vld ;
-      sc_out <bool> rdy ;
+      sc_in <bool> vld;
+      sc_out <bool> rdy;
       static const unsigned int width=0;
 
       in(sc_module_name name = sc_gen_unique_name("conn_sync_in"))
@@ -168,7 +169,7 @@ namespace Connections
         rd_chk.ok();
       }
 
-#pragma design modulario<sync>
+      #pragma design modulario<sync>
       bool nb_sync_in() {
         rd_chk.test();
         rdy.write(true);
@@ -177,12 +178,12 @@ namespace Connections
         return vld.read();
       }
 
-#pragma design modulario<sync>
+      #pragma design modulario<sync>
       void sync_in() {
         rd_chk.test();
         do {
-          rdy.write(true) ;
-          wait() ;
+          rdy.write(true);
+          wait();
         } while (vld.read() != true );
         rdy.write(false);
       }
@@ -204,8 +205,8 @@ namespace Connections
       sync_checker wr_chk;
 
     public:
-      sc_out <bool> vld ;
-      sc_in <bool> rdy ;
+      sc_out <bool> vld;
+      sc_in <bool> rdy;
       static const unsigned int width=0;
 
       out(sc_module_name name = sc_gen_unique_name("conn_sync_out"))
@@ -219,7 +220,7 @@ namespace Connections
         wr_chk.ok();
       }
 
-#pragma design modulario<sync>
+      #pragma design modulario<sync>
       void sync_out() {
         wr_chk.test();
         do {
@@ -240,8 +241,122 @@ namespace Connections
         bind(c);
       }
     };  // out
-
   };  // conn_sync
+
+  // Like conn_sync but just a vld signal
+  class conn_event
+  {
+  public:
+    #pragma hls_ungroup
+    class chan : public sc_module
+    {
+      sync_checker wr_chk;
+    public:
+      sc_signal<bool> vld;
+
+      chan(sc_module_name name = sc_gen_unique_name("conn_event_chan"))
+        : wr_chk(name, "call reset_notify()", "send an event notification on this channel" )
+        , vld( ccs_concat(name,"vld") )
+        {}
+
+      void reset_notify() {
+        vld.write(false);
+        wr_chk.ok();
+      }
+      void reset_wait_for() {}
+
+      #pragma design modulario<sync>
+      void wait_for() {
+        do {
+          wait();
+        } while (vld.read() != true );
+      }
+
+      #pragma design modulario<sync>
+      bool nb_valid() {
+        wait();
+        return vld.read();
+      }
+
+      #pragma design modulario<sync>
+      void nb_notify () {
+        wr_chk.test();
+        vld.write(true);
+        wait();
+        vld.write(false);
+      }
+    }; //chan
+
+    class in
+    {
+    public:
+      sc_in<bool> vld;
+
+      in(sc_module_name name = sc_gen_unique_name("conn_event_in")) :
+        vld( ccs_concat(name,"vld") ) {}
+
+      void reset_wait_for() {}
+
+      #pragma design modulario<sync>
+      void wait_for() {
+        do {
+          wait();
+        } while (vld.read() != true );
+      }
+
+      #pragma design modulario<sync>
+      bool nb_valid() {
+        wait();
+        return vld.read();
+      }
+
+      template <class C>
+      void bind (C &c) {
+        vld(c.vld);
+      }
+
+      template <class C>
+      void operator() (C &c) {
+        bind(c);
+      }
+    }; //in
+
+    class out
+    {
+      sync_checker wr_chk;
+
+    public:
+      sc_out<bool> vld;
+
+      out(sc_module_name name = sc_gen_unique_name("conn_event_out"))
+        : wr_chk(name, "call reset_notify()", "send an event notification on this port" )
+        , vld( ccs_concat(name,"vld") )
+        {}
+
+      void reset_notify() {
+        vld.write(false);
+        wr_chk.ok();
+      }
+
+      #pragma design modulario<sync>
+      void nb_notify () {
+        wr_chk.test();
+        vld.write(true);
+        wait();
+        vld.write(false);
+      }
+
+      template <class C>
+      void bind (C &c) {
+        vld(c.vld);
+      }
+
+      template <class C>
+      void operator() (C &c) {
+        bind(c);
+      }
+    }; //out
+  }; //conn_event
 
   class SyncOut : public conn_sync::out
   {
@@ -333,7 +448,7 @@ namespace Connections
     std::string _name;
 #endif
   public:
-    SyncChannel(sc_module_name name = sc_gen_unique_name("Connections::SyncIn"))
+    SyncChannel(sc_module_name name = sc_gen_unique_name("Connections::SyncChannel"))
       : Base(name)  {
 #ifdef CONNECTIONS_SIM_ONLY
       _name = name;
@@ -377,7 +492,136 @@ namespace Connections
 #endif
   };
 
-} //Connections namespace
+  class EventOut : public conn_event::out
+  {
+  private:
+    typedef conn_event::out Base;
+#ifdef CONNECTIONS_SIM_ONLY
+    std::string _name;
+#endif
 
+  public:
+    EventOut(sc_module_name name = sc_gen_unique_name("Connections::EventOut"))
+      : Base(name)  {
+#ifdef CONNECTIONS_SIM_ONLY
+      _name = name;
+#endif
+    }
+    ~EventOut() {}
+
+    void EventPushNB() { Base::nb_notify(); }
+    void nb_notify() { Base::nb_notify(); }
+    void Reset() { Base::reset_notify(); }
+    void reset_notify() { Base::reset_notify(); }
+
+#ifdef CONNECTIONS_SIM_ONLY
+    inline friend void sc_trace(sc_trace_file *tf, const EventOut &v, const std::string &NAME ) {
+      sc_trace(tf,v.vld, NAME + ".vld");
+    }
+    std::string name() {
+      std::string theName;
+      if (sc_core::sc_get_current_process_b() && sc_core::sc_get_current_process_b()->get_parent_object()) {
+        theName = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + _name;
+      } else {
+        theName = _name;
+      }
+      return (theName);
+    }
+#endif
+  };
+
+  class EventIn : public conn_event::in
+  {
+  private:
+    typedef conn_event::in Base;
+#ifdef CONNECTIONS_SIM_ONLY
+    std::string _name;
+#endif
+
+  public:
+    EventIn(sc_module_name name = sc_gen_unique_name("Connections::EventIn"))
+      : Base(name) {
+#ifdef CONNECTIONS_SIM_ONLY
+      _name = name;
+#endif
+    }
+    ~EventIn() {}
+    void EventPop() { Base::wait_for(); }
+    void wait_for() { Base::wait_for(); }
+    bool EventPopNB() { return (Base::nb_valid()); }
+    bool nb_valid() { return (Base::nb_valid()); }
+    void Reset() { Base::reset_wait_for(); }
+    void reset_wait_for() { Base::reset_wait_for(); }
+
+#ifdef CONNECTIONS_SIM_ONLY
+    inline friend void sc_trace(sc_trace_file *tf, const EventIn &v, const std::string &NAME ) {
+      sc_trace(tf,v.vld, NAME + ".vld");
+    }
+    std::string name() {
+      std::string theName;
+      if (sc_core::sc_get_current_process_b() && sc_core::sc_get_current_process_b()->get_parent_object()) {
+        theName = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + _name;
+      } else {
+        theName = _name;
+      }
+      return (theName);
+    }
+#endif
+  };
+
+  class EventChannel: public conn_event::chan
+#ifdef CONNECTIONS_SIM_ONLY
+        , public Connections::sc_trace_marker
+#endif
+  {
+  private:
+    typedef conn_event::chan Base;
+#ifdef CONNECTIONS_SIM_ONLY
+    std::string _name;
+#endif
+  public:
+    EventChannel(sc_module_name name = sc_gen_unique_name("Connections::EventChannel"))
+      : Base(name)  {
+#ifdef CONNECTIONS_SIM_ONLY
+      _name = name;
+#endif
+    }
+
+    void EventPop() { Base::wait_for(); }
+    void wait_for() { Base::wait_for(); }
+    bool EventPopNB() { return Base::nb_valid(); }
+    bool nb_valid() { return Base::nb_valid(); }
+    void EventPushNB() { Base::nb_notify(); }
+    void nb_notify() { Base::nb_notify(); }
+
+    void ResetRead() { Base::reset_wait_for(); }
+    void reset_wait_for() { Base::reset_wait_for(); }
+    void ResetWrite() { Base::reset_notify(); }
+    void reset_notify() { Base::reset_notify(); }
+
+#ifdef CONNECTIONS_SIM_ONLY
+    inline friend void sc_trace(sc_trace_file *tf, const EventChannel &v, const std::string &NAME ) {
+      sc_trace(tf,v.vld, NAME + ".vld");
+    }
+    std::string name() {
+      std::string theName;
+      if (sc_core::sc_get_current_process_b() && sc_core::sc_get_current_process_b()->get_parent_object()) {
+        theName = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + _name;
+      } else {
+        theName = _name;
+      }
+      return (theName);
+    }
+
+    virtual void set_trace(sc_trace_file* fp)
+    {
+      sc_trace(fp, this->vld, this->vld.name());
+    }
+
+    virtual bool set_log(std::ofstream* os, int& log_num, std::string& path_name) { return false; }
+#endif
+  };
+
+} //Connections namespace
 
 #endif // CONNECTIONS_SYNC_H

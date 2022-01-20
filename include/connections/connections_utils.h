@@ -91,6 +91,46 @@
 #endif
 
 /**
+ * \brief CONNECTIONS_SYNC_RESET define: Select synchronous or asynchronous reset.
+ * \ingroup connections_module
+ *
+ * Connections uses asynchronous, active-low reset by default. Defining CONNECTIONS_SYNC_RESET
+ * will use synchronous, active-low reset instead.
+ * The macros CONNECTIONS_NEG_RESET_SIGNAL_IS() and CONNECTIONS_POS_RESET_SIGNAL_IS() can be used
+ * in place of SystemC's reset_signal_is() and async_reset_signal_is() so that
+ * CONNECTIONS_SYNC_RESET can select type.
+ *
+ * Active-low and -high are separate macros, in case module code assumes a priority.
+ *
+ */
+//Backwards compatible with ENABLE_SYNC_RESET
+#if defined(ENABLE_SYNC_RESET) && !defined(CONNECTIONS_SYNC_RESET)
+#define CONNECTIONS_SYNC_RESET 
+#endif
+#if defined(CONNECTIONS_SYNC_RESET)
+#define CONNECTIONS_NEG_RESET_SIGNAL_IS(port) reset_signal_is(port,false)
+#define CONNECTIONS_POS_RESET_SIGNAL_IS(port) reset_signal_is(port,true)
+#else
+#define CONNECTIONS_NEG_RESET_SIGNAL_IS(port) async_reset_signal_is(port,false)
+#define CONNECTIONS_POS_RESET_SIGNAL_IS(port) async_reset_signal_is(port,true)
+#endif
+
+/**
+ * \brief CONNECTIONS_POS_RESET define: Select polarity for synchronous or asynchronous reset.
+ * \ingroup connections_module
+ *
+ * Connections uses active-low reset by default. Defining CONNECTIONS_POS_RESET
+ * will use CONNECTIONS_POS_RESET_SIGNAL_IS() as defined by CONNECTIONS_SYNC_RESET
+ *
+ * Use CONNECTIONS_RESET_SIGNAL_IS() inplace of the active low/high specific macros above.
+ */
+#if defined(CONNECTIONS_POS_RESET)
+#define CONNECTIONS_RESET_SIGNAL_IS(port) CONNECTIONS_POS_RESET_SIGNAL_IS(port)
+#else
+#define CONNECTIONS_RESET_SIGNAL_IS(port) CONNECTIONS_NEG_RESET_SIGNAL_IS(port)
+#endif
+
+/**
  * \brief CONNECTIONS_CONCAT define: Concatenate two strings, separate with an underscore.
  * \ingroup connections_module
  *
@@ -103,6 +143,16 @@
 #define CONNECTIONS_CONCAT(s1,s2) (std::string(s2)).c_str()
 #else
 #define CONNECTIONS_CONCAT(s1,s2) (std::string(s1) + "_" + std::string(s2)).c_str()
+#endif
+
+//Define some overrides and defaults for RAND_SEED (also used by nvhls_rand.h).
+#if defined(USE_TIME_RAND_SEED)
+#undef RAND_SEED
+#elif defined(NVHLS_RAND_SEED)
+#undef RAND_SEED
+#define RAND_SEED NVHLS_RAND_SEED
+#elif !defined(RAND_SEED)
+#define RAND_SEED 19650218U
 #endif
 
 namespace Connections
