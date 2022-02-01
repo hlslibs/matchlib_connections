@@ -19,6 +19,7 @@
 // marshaller.h
 //
 // Revision History:
+//  1.2.8    - fix number of long bits which can change based on 32-bit/64-bit target arch
 //  1.2.6    - CAT-29221
 //  1.2.4    - Add Connections marshaller support for ac_float
 //           - Reduce #include list, add mc_typeconv.h explicitly for re-entrant features
@@ -247,8 +248,8 @@ MarshallBasicTypes(short,1,16);
 MarshallBasicTypes(unsigned short,0,16);
 MarshallBasicTypes(int,1,32);
 MarshallBasicTypes(unsigned int,0, 32);
-MarshallBasicTypes(long,1,32);
-MarshallBasicTypes(unsigned long,0,32);
+MarshallBasicTypes(long,1,sizeof(long)*8);
+MarshallBasicTypes(unsigned long,0,sizeof(unsigned long)*8);
 MarshallBasicTypes(long long,1,64);
 MarshallBasicTypes(unsigned long long,0,64);
 
