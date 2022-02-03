@@ -4,7 +4,7 @@
  *                                                                        *
  *  Software Version: 1.2                                                 *
  *                                                                        *
- *  Release Date    : Tue Feb  1 16:08:47 PST 2022                        *
+ *  Release Date    : Wed Feb  2 17:40:47 PST 2022                        *
  *  Release Type    : Production Release                                  *
  *  Release Build   : 1.2.8                                               *
  *                                                                        *
