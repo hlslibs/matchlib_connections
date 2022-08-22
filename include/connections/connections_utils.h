@@ -148,11 +148,13 @@
 //Define some overrides and defaults for RAND_SEED (also used by nvhls_rand.h).
 #if defined(USE_TIME_RAND_SEED)
 #undef RAND_SEED
+#undef NVHLS_RAND_SEED
 #elif defined(NVHLS_RAND_SEED)
 #undef RAND_SEED
 #define RAND_SEED NVHLS_RAND_SEED
 #elif !defined(RAND_SEED)
 #define RAND_SEED 19650218U
+#define NVHLS_RAND_SEED 19650218U
 #endif
 
 namespace Connections

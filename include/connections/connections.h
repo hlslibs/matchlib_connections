@@ -1,6 +1,4 @@
 
-
-
 /*
  * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  *
@@ -52,9 +50,6 @@
 
 #if defined(CONNECTIONS_ACCURATE_SIM) || defined(CONNECTIONS_FAST_SIM)
 #define CONNECTIONS_SIM_ONLY
-#if !defined(SC_INCLUDE_DYNAMIC_PROCESSES)
-#error "Make sure SC_INCLUDE_DYNAMIC_PROCESSES is defined BEFORE first systemc.h include"
-#endif
 #if defined(CONNECTIONS_SYN_SIM)
 #warning "CONNECTIONS_SYN_SIM cannot be used with CONNECTIONS_ACCURATE_SIM or CONNECTIONS_FAST_SIM"
 #undef CONNECTIONS_SYN_SIM
@@ -74,6 +69,16 @@
 #endif
 
 #include <systemc.h>
+#if defined(CONNECTIONS_SIM_ONLY) && !defined(SC_INCLUDE_DYNAMIC_PROCESSES)
+#if !defined(NC_SYSTEMC) && !defined(XM_SYSTEMC)
+#warning "SC_INCLUDE_DYNAMIC_PROCESSES is being defined and reentrant <systemc> header included"
+#define SC_INCLUDE_DYNAMIC_PROCESSES
+#include <systemc>
+#else
+#error "Make sure SC_INCLUDE_DYNAMIC_PROCESSES is defined BEFORE first systemc.h include"
+#endif
+#endif
+
 #include "marshaller.h"
 #include "connections_utils.h"
 #include "connections_trace.h"
@@ -84,7 +89,10 @@
 #include <vector>
 #include <map>
 #include <tlm.h>
+#if !defined(NC_SYSTEMC) && !defined(XM_SYSTEMC)
 #include <sysc/kernel/sc_reset.h>
+#define HAS_SC_RESET_API
+#endif
 #include "Pacer.h"
 #endif
 
@@ -336,6 +344,11 @@ SpecialWrapperIfc(Connections::Out);
 #define _COMBDATNAMEOUTSTR_ "comb_out_dat"
 #endif
 
+#if !defined(__SYNTHESIS__) && defined(CONNECTIONS_DEBUG)
+#define DBG_CONNECT(x) std::cout << x << "\n";
+#else
+#define DBG_CONNECT(x);
+#endif
 
 namespace Connections
 {
@@ -380,9 +393,8 @@ namespace Connections
       }
     }
 
-    void check() {
-      if (!is_reset) {
 #ifndef __SYNTHESIS__
+    std::string report_name() {
         std::string name = this->name;
         if (is_val_name) {
           std::string nameSuff = "_";
@@ -393,6 +405,14 @@ namespace Connections
           // Add in hierarchcy to name
           name = std::string(sc_core::sc_get_current_process_b()->get_parent_object()->name()) + "." + this->name;
         }
+        return name;
+    }
+#endif
+
+    void check() {
+      if (!is_reset) {
+#ifndef __SYNTHESIS__
+        std::string name = report_name();
         SC_REPORT_WARNING("CONNECTIONS-101", ("Port or channel " + name +
             " wasn't reset! In thread or process '" 
             + std::string(sc_core::sc_get_current_process_b()->basename()) + "'.").c_str());
@@ -440,7 +460,11 @@ namespace Connections
 #endif
     }
 
-    void set(sc_clock *clk_ptr_) { /* clk_vector.push_back(clk_ptr_);*/  };
+    void set(sc_clock *clk_ptr_) {
+#ifndef HAS_SC_RESET_API
+      clk_info_vector.push_back(clk_ptr_);
+#endif
+    }
 
     void pre_delay(int c) const {
       wait(adjust_for_edge(get_period_delay(c)-epsilon, c).to_seconds(),SC_SEC);
@@ -555,7 +579,11 @@ namespace Connections
   class Blocking_abs
   {
   public:
-    Blocking_abs() { clock_registered=false; sibling_port=0; non_leaf_port=false;};
+    Blocking_abs() {
+       clock_registered=false;
+       sibling_port=0; non_leaf_port=false; clock_number=0; 
+       DBG_CONNECT("Blocking_abs CTOR: " << std::hex << (void*)this );
+    };
 
     virtual bool Post() {return false;};
     virtual bool Pre()  {return false;};
@@ -565,6 +593,7 @@ namespace Connections
     bool non_leaf_port;
     int  clock_number;
     virtual void do_reset_check() {}
+    virtual std::string report_name() {return std::string("unnamed"); }
     Blocking_abs *sibling_port;
   };
 
@@ -702,21 +731,39 @@ namespace Connections
       for (unsigned i=0; i < tracked.size(); i++) { tracked[i]->do_reset_check(); }
 
       for (unsigned i=0; i < tracked.size(); i++) {
-        if (!tracked[i]->clock_registered || (map_port_to_event[tracked[i]] == 0)) {
+        if (!!tracked[i] && (!tracked[i]->clock_registered || (map_port_to_event[tracked[i]] == 0))) {
+          DBG_CONNECT("check_registration: unreg port " << std::hex << tracked[i] << " (" << tracked[i]->full_name() << ")");
 
-          if (tracked[i]->sibling_port) {
-            tracked[i]->clock_number = tracked[i]->sibling_port->clock_number;
-            tracked[i]->clock_registered = true;
-            tracked_per_clk[tracked[i]->clock_number]->push_back(tracked[i]);
+          bool resolved = false;
+          int clock_number = 0;
+
+          Blocking_abs* sib = 0;
+          for (sib = tracked[i]; sib->sibling_port; sib = sib->sibling_port) {
+            DBG_CONNECT("  sibling port traversal to: " << std::hex << sib->sibling_port << " (" << sib->sibling_port->full_name() << ")");
           }
 
+          resolved = sib->clock_registered;
+
+          if (resolved)
+            clock_number = sib->clock_number;
+
+          DBG_CONNECT("  resolution and clock_number: " << resolved << " " << clock_number);
+
           // See Combinational_SimPorts_abs::do_reset_check() for explanation
-          if (tracked[i]->full_name() == "Combinational_SimPorts_abs") { continue; }
+          if (tracked[i]->full_name() == "Combinational_SimPorts_abs")  continue; 
 
           const sc_object *ob = dynamic_cast<const sc_object *>(tracked[i]);
           std::string nm(ob?ob->name():"unnamed");
-          SC_REPORT_ERROR("CONNECTIONS-115",
-                          (std::string("Unregistered connections port - check and fix any prior warnings about missing Reset() on ports: " + nm + " " + tracked[i]->full_name()).c_str()));
+
+          if (!resolved && (get_sim_clk().clk_info_vector.size() > 1)) {
+            SC_REPORT_ERROR("CONNECTIONS-125",
+                          (std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: "
+                                       + nm + " " + tracked[i]->full_name() + " (" + tracked[i]->report_name() + ")").c_str()));
+          }
+
+          tracked[i]->clock_number = clock_number;
+          tracked[i]->clock_registered = true;
+          tracked_per_clk[tracked[i]->clock_number]->push_back(tracked[i]);
         }
       }
 
@@ -749,10 +796,20 @@ namespace Connections
       class my_process : public sc_process_b
       {
       public:
-        // code written in restricted style to work on Accellera sim as well as Questa
+#ifdef HAS_SC_RESET_API
+        // Code written in restricted style to work on OSCI/Accellera sim as well as Questa and VCS
+        // when SYSTEMC_HOME/sysc/kernel/sc_reset.h is available
         int static_events_size() { return m_static_events.size(); }
         const sc_event *first_event() { return m_static_events[0]; }
         std::vector<sc_reset *> &get_sc_reset_vector() { return m_resets; }
+#else
+        // Remove dependency on sc_reset.h, but requires user call Connections::set_sim_clk(&clk) before sc_start() 
+        int static_events_size() { return 1; }
+        const sc_event *first_event() { 
+          SimConnectionsClk::clk_info &ci = get_sim_clk().clk_info_vector[0];
+          return &(ci.clk_ptr->posedge_event());
+        }
+#endif
       };
 
       sc_process_handle h = sc_get_current_process_handle();
@@ -769,7 +826,7 @@ namespace Connections
       map_port_to_event[c] = e;
 
       int clk = map_event_to_clock[e];
-      if (clk == 0) {
+      if (clk <= 0) {
         SC_REPORT_ERROR("CONNECTIONS-111",
                         (std::string("Failed to find sc_clock for process: " + std::string(h.name())).c_str()));
         SC_REPORT_ERROR("CONNECTIONS-111", "Stopping sim due to fatal error.");
@@ -781,6 +838,7 @@ namespace Connections
 
       tracked_per_clk[clk]->push_back(c);
       c->clock_number = clk;
+      DBG_CONNECT("add_clock_event: port " << std::hex << c << " clock_number " << clk << " process " << h.name());
 
       sc_clock* clk_ptr = get_sim_clk().clk_info_vector[clk].clk_ptr;
       if (!clk_ptr->posedge_first()) {
@@ -799,6 +857,7 @@ namespace Connections
                 SC_REPORT_ERROR("CONNECTIONS-304", ss.str().c_str());
       }
 
+#ifdef HAS_SC_RESET_API
       class my_reset : public sc_reset
       {
       public:
@@ -872,6 +931,7 @@ namespace Connections
             map_clk_to_reset_info[clk] = pri;
           }
       }
+#endif //HAS_SC_RESET_API
     }
 
     void add_annotate(Connections_BA_abs *c) {
@@ -966,7 +1026,9 @@ namespace Connections
 
   inline void set_sim_clk(sc_clock *clk_ptr)
   {
-    // ConManager_statics<void>::sim_clk.clk_vector.push_back(clk_ptr);
+#ifndef HAS_SC_RESET_API
+    ConManager_statics<void>::sim_clk.clk_info_vector.push_back(clk_ptr);
+#endif
   }
 
   template <class Dummy>
@@ -976,7 +1038,9 @@ namespace Connections
 
   inline SimConnectionsClk &get_sim_clk()
   {
-    // CONNECTIONS_ASSERT_MSG(ConManager_statics<void>::sim_clk.clk_vector.size() > 0, "You must call Connections::set_sim_clk(&clk) before sc_start()");
+#ifndef HAS_SC_RESET_API
+    CONNECTIONS_ASSERT_MSG(ConManager_statics<void>::sim_clk.clk_info_vector.size() > 0, "You must call Connections::set_sim_clk(&clk) before sc_start()");
+#endif
     return ConManager_statics<void>::sim_clk;
   }
 
@@ -1170,7 +1234,13 @@ namespace Connections
     sc_signal<MsgBits> msgbits;
     sc_out<Message> _DATNAME_;
     sc_in<bool> _VLDNAME_;
-
+#ifdef CONNECTIONS_SIM_ONLY
+    Blocking_abs *sibling_port = 0; 
+    /** stuart: TODO
+        This module probably should inherit from Blocking_abs so that the 
+        sibling_port->sibling_port traversal in check_registration fully works
+    **/
+#endif
     void do_marshalled2direct() {
       if (_VLDNAME_) {
         MsgBits mbits = msgbits.read();
@@ -1196,7 +1266,13 @@ namespace Connections
     sc_in<MsgBits> msgbits;
     sc_in<bool> _VLDNAME_;
     sc_signal<Message> _DATNAME_;
-
+#ifdef CONNECTIONS_SIM_ONLY
+    Blocking_abs *sibling_port = 0;
+    /** stuart: TODO
+        This module probably should inherit from Blocking_abs so that the 
+        sibling_port->sibling_port traversal in check_registration fully works
+    **/
+#endif
     void do_marshalled2direct() {
       if (_VLDNAME_) {
         MsgBits mbits = msgbits.read();
@@ -1221,7 +1297,13 @@ namespace Connections
     typedef sc_lv<WMessage::width> MsgBits;
     sc_in<Message> _DATNAME_;
     sc_signal<MsgBits> msgbits;
-
+#ifdef CONNECTIONS_SIM_ONLY
+    Blocking_abs *sibling_port = 0;
+    /** stuart: TODO
+        This module probably should inherit from Blocking_abs so that the 
+        sibling_port->sibling_port traversal in check_registration fully works
+    **/
+#endif
     void do_direct2marshalled() {
       Marshaller<WMessage::width> marshaller;
       //WMessage wm(msg);
@@ -1244,7 +1326,13 @@ namespace Connections
     typedef sc_lv<WMessage::width> MsgBits;
     sc_signal<Message> _DATNAME_;
     sc_out<MsgBits> msgbits;
-
+#ifdef CONNECTIONS_SIM_ONLY
+    Blocking_abs *sibling_port = 0;
+    /** stuart: TODO
+        This module probably should inherit from Blocking_abs so that the 
+        sibling_port->sibling_port traversal in check_registration fully works
+    **/
+#endif
     void do_direct2marshalled() {
       Marshaller<WMessage::width> marshaller;
       WMessage wm(_DATNAME_);
@@ -1273,7 +1361,7 @@ namespace Connections
 
     // Default constructor
     explicit TLMToDirectOutPort(tlm::tlm_fifo<Message> &fifo)
-      : _VLDNAME_(sc_gen_unique_name("_VLDNAMEOUT_")),
+      : _VLDNAME_(sc_gen_unique_name(_VLDNAMEOUTSTR_)),
         _RDYNAME_(sc_gen_unique_name(_RDYNAMEOUTSTR_ )),
         _DATNAME_(sc_gen_unique_name(_DATNAMEOUTSTR_)) {
 
@@ -1584,6 +1672,12 @@ namespace Connections
       this->read_reset_check.check();
     }
 
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->read_reset_check.report_name();
+    }
+#endif
+
 // Pop
 #pragma builtin_modulario
 #pragma design modulario < in >
@@ -1684,6 +1778,12 @@ namespace Connections
     void do_reset_check() {
       this->read_reset_check.check();
     }
+
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->read_reset_check.report_name();
+    }
+#endif
 
 // Pop
 #pragma design modulario < in >
@@ -2228,6 +2328,7 @@ namespace Connections
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_d2mport->sibling_port = this; 
       rhs.disable_spawn();
       rhs.non_leaf_port = true;
 #endif
@@ -2243,6 +2344,7 @@ namespace Connections
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_d2mport->sibling_port = this; 
       dynamic_d2mport->_DATNAME_(rhs._DATNAMEOUT_);
       this->_VLDNAME_(rhs._VLDNAMEOUT_);
       this->_RDYNAME_(rhs._RDYNAMEOUT_);
@@ -2261,6 +2363,7 @@ namespace Connections
       Combinational<Message, DIRECT_PORT> *dynamic_comb;
 
       dynamic_tlm2d_port = new TLMToDirectOutPort<Message>(sc_gen_unique_name("dynamic_tlm2d_port"), rhs.fifo);
+      dynamic_tlm2d_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb"));
 
       // Bind the marshaller to combinational
@@ -2409,6 +2512,7 @@ namespace Connections
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_d2mport->sibling_port = this; 
       rhs.disable_spawn();
       rhs.non_leaf_port = true;
 #endif
@@ -2424,6 +2528,7 @@ namespace Connections
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_d2mport->sibling_port = this; 
       dynamic_d2mport->_DATNAME_(rhs._DATNAMEOUT_);
       this->_VLDNAME_(rhs._VLDNAMEOUT_);
       this->_RDYNAME_(rhs._RDYNAMEOUT_);
@@ -2442,6 +2547,7 @@ namespace Connections
       Combinational<Message, DIRECT_PORT> *dynamic_comb;
 
       dynamic_tlm2d_port = new TLMToDirectOutPort<Message>(sc_gen_unique_name("dynamic_tlm2d_port"), rhs.fifo);
+      dynamic_tlm2d_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb"));
 
       // Bind the marshaller to combinational
@@ -2589,6 +2695,7 @@ namespace Connections
     // Reset read
     void Reset() {
       this->read_reset_check.reset(this->non_leaf_port);
+      get_conManager().add_clock_event(this);
       Message temp;
       while (i_fifo->nb_get(temp));
     }
@@ -2596,6 +2703,12 @@ namespace Connections
     void do_reset_check() {
       this->read_reset_check.check();
     }
+
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->read_reset_check.report_name();
+    }
+#endif
 
 // Pop
 #pragma design modulario < in >
@@ -2888,6 +3001,12 @@ namespace Connections
       this->write_reset_check.check();
     }
 
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->write_reset_check.report_name();
+    }
+#endif
+
 // Push
 #pragma builtin_modulario
 #pragma design modulario < out >
@@ -2972,6 +3091,12 @@ namespace Connections
     void do_reset_check() {
       this->write_reset_check.check();
     }
+
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->write_reset_check.report_name();
+    }
+#endif
 
     // Push
 #pragma design modulario < out >
@@ -3190,6 +3315,7 @@ namespace Connections
       dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_m2dport->sibling_port = this; 
       rhs.disable_spawn();
       rhs.non_leaf_port = true;
 #endif
@@ -3208,6 +3334,7 @@ namespace Connections
       this->_DATNAME_(dynamic_m2dport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_m2dport->sibling_port = this; 
       dynamic_m2dport->_DATNAME_(rhs._DATNAMEIN_);
       dynamic_m2dport->_VLDNAME_(rhs._VLDNAMEIN_);
       this->_VLDNAME_(rhs._VLDNAMEIN_);
@@ -3228,6 +3355,7 @@ namespace Connections
       Combinational<Message, DIRECT_PORT> *dynamic_comb;
 
       dynamic_d2tlm_port = new DirectToTLMInPort<Message>(sc_gen_unique_name("dynamic_d2tlm_port"), rhs.fifo);
+      dynamic_d2tlm_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb"));
 
       // Bind the marshaller to combinational
@@ -3378,6 +3506,7 @@ namespace Connections
       dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_m2dport->sibling_port = this; 
       rhs.disable_spawn();
       rhs.non_leaf_port = true;
 #endif
@@ -3396,6 +3525,7 @@ namespace Connections
       this->_DATNAME_(dynamic_m2dport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_m2dport->sibling_port = this; 
       dynamic_m2dport->_DATNAME_(rhs._DATNAMEIN_);
       dynamic_m2dport->_VLDNAME_(rhs._VLDNAMEIN_);
       this->_VLDNAME_(rhs._VLDNAMEIN_);
@@ -3416,6 +3546,7 @@ namespace Connections
       Combinational<Message, DIRECT_PORT> *dynamic_comb;
 
       dynamic_d2tlm_port = new DirectToTLMInPort<Message>(sc_gen_unique_name("dynamic_d2tlm_port"), rhs.fifo);
+      dynamic_d2tlm_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb") );
 
       // Bind the marshaller to combinational
@@ -3553,6 +3684,7 @@ namespace Connections
       dynamic_d2mport = new DirectToMarshalledOutPort<Message>("dynamic_d2mport");
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_d2mport->sibling_port = this; 
       rhs.disable_spawn();
       rhs.non_leaf_port = true;
 #endif
@@ -3570,6 +3702,7 @@ namespace Connections
       this->_DATNAME_(dynamic_d2mport->_DATNAME_);
 
 #ifdef CONNECTIONS_SIM_ONLY
+      dynamic_d2mport->sibling_port = this; 
       dynamic_d2mport->_DATNAME_(rhs._DATNAMEIN_);
       dynamic_d2mport->_VLDNAME_(rhs._VLDNAMEIN_);
       this->_VLDNAME_(rhs._VLDNAMEIN_);
@@ -3623,11 +3756,18 @@ namespace Connections
     // Reset write
     void Reset() {
       this->write_reset_check.reset(this->non_leaf_port);
+      get_conManager().add_clock_event(this);
     }
 
     void do_reset_check() {
       this->write_reset_check.check();
     }
+
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->write_reset_check.report_name();
+    }
+#endif
 
 // Push
 #pragma design modulario < out >
@@ -3912,6 +4052,12 @@ namespace Connections
       this->write_reset_check.check();
     }
 
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->write_reset_check.report_name();
+    }
+#endif
+
 // Pop
 #pragma builtin_modulario
 #pragma design modulario < in >
@@ -4068,11 +4214,11 @@ namespace Connections
       , Connections_BA_abs(CONNECTIONS_CONCAT(name, "comb_BA"))
 
         //, in_msg(CONNECTIONS_CONCAT(name, "comb_in_msg"))
-      , _VLDNAMEIN_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBVLDNAMEINSTR_)))
-      , _RDYNAMEIN_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBRDYNAMEINSTR_)))
+      , _VLDNAMEIN_(CONNECTIONS_CONCAT(name, _COMBVLDNAMEINSTR_))
+      , _RDYNAMEIN_(CONNECTIONS_CONCAT(name, _COMBRDYNAMEINSTR_))
         //, out_msg(CONNECTIONS_CONCAT(name, "comb_out_msg"))
-      , _VLDNAMEOUT_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBVLDNAMEOUTSTR_)))
-      , _RDYNAMEOUT_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBRDYNAMEOUTSTR_)))
+      , _VLDNAMEOUT_(CONNECTIONS_CONCAT(name, _COMBVLDNAMEOUTSTR_))
+      , _RDYNAMEOUT_(CONNECTIONS_CONCAT(name, _COMBRDYNAMEOUTSTR_))
 
       , current_cycle(0)
       , latency(0)
@@ -4663,8 +4809,8 @@ namespace Connections
     explicit Combinational(const char *name) : Combinational_SimPorts_abs<Message, MARSHALL_PORT>(name)
 
 #ifdef CONNECTIONS_SIM_ONLY
-      ,_DATNAMEIN_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBDATNAMEINSTR_)))
-      ,_DATNAMEOUT_(sc_gen_unique_name(CONNECTIONS_CONCAT(name, _COMBDATNAMEOUTSTR_)))
+      ,_DATNAMEIN_(CONNECTIONS_CONCAT(name, _COMBDATNAMEINSTR_))
+      ,_DATNAMEOUT_(CONNECTIONS_CONCAT(name, _COMBDATNAMEOUTSTR_))
       ,dummyPortManager(CONNECTIONS_CONCAT(name, "dummyPortManager"), this->sim_in, this->sim_out, *this)
 #else
       ,_DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_))
@@ -4869,7 +5015,7 @@ namespace Connections
 
     explicit Combinational(const char *name) : Combinational_SimPorts_abs<Message, DIRECT_PORT>(name)
 #ifdef CONNECTIONS_SIM_ONLY
-      ,_DATNAMEIN_(CONNECTIONS_CONCAT(name, _COMBDATNAMEINSTR_ ))
+      ,_DATNAMEIN_(CONNECTIONS_CONCAT(name, _COMBDATNAMEINSTR_))
       ,_DATNAMEOUT_(CONNECTIONS_CONCAT(name, _COMBDATNAMEOUTSTR_))
       ,dummyPortManager(CONNECTIONS_CONCAT(name, "dummyPortManager"), this->sim_in, this->sim_out, *this)
 #else
@@ -5023,6 +5169,12 @@ namespace Connections
           this->write_reset_check.check();
       */
     }
+
+#ifndef __SYNTHESIS__
+    std::string report_name() {
+      return this->write_reset_check.report_name();
+    }
+#endif
 
 // Pop
 #pragma design modulario < in >
