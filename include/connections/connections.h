@@ -18,6 +18,7 @@
 // connections.h
 //
 // Revision History:
+//   1.3.0   - CAT-31235 - fix waveform tracing bug in pre-HLS matchlib model
 //   1.2.6   - CAT-29206 - fix for waveform tracing
 //             CAT-29244 - improved error checking
 //   1.2.4   - Default to CONNECTIONS_ACCURATE_SIM. Add CONNECTIONS_SYN_SIM instead of
@@ -353,6 +354,24 @@ SpecialWrapperIfc(Connections::Out);
 namespace Connections
 {
 
+  template <class T>
+  T
+  static convert_from_lv(sc_lv<Wrapped<T>::width> lv) {
+    Wrapped<T> result;
+    Marshaller<Wrapped<T>::width> marshaller(lv);
+    result.Marshall(marshaller);
+    return result.val;
+  };
+
+  template <class T>
+  sc_lv<Wrapped<T>::width>
+  static convert_to_lv(T v) {
+    Marshaller<Wrapped<T>::width> marshaller;
+    Wrapped<T> wm(v);
+    wm.Marshall(marshaller);
+    return marshaller.GetResult();
+  };
+
   class ResetChecker
   {
   protected:
@@ -591,6 +610,7 @@ namespace Connections
     virtual std::string full_name() { return "unnamed"; }
     bool clock_registered;
     bool non_leaf_port;
+    bool disable_spawn_true;
     int  clock_number;
     virtual void do_reset_check() {}
     virtual std::string report_name() {return std::string("unnamed"); }
@@ -749,6 +769,13 @@ namespace Connections
 
           DBG_CONNECT("  resolution and clock_number: " << resolved << " " << clock_number);
 
+          if (tracked[i]->sibling_port) {
+            tracked[i]->clock_number = clock_number;
+            tracked[i]->clock_registered = true;
+            tracked_per_clk[tracked[i]->clock_number]->push_back(tracked[i]);
+            continue;
+          }
+
           // See Combinational_SimPorts_abs::do_reset_check() for explanation
           if (tracked[i]->full_name() == "Combinational_SimPorts_abs")  continue; 
 
@@ -760,10 +787,6 @@ namespace Connections
                           (std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: "
                                        + nm + " " + tracked[i]->full_name() + " (" + tracked[i]->report_name() + ")").c_str()));
           }
-
-          tracked[i]->clock_number = clock_number;
-          tracked[i]->clock_registered = true;
-          tracked_per_clk[tracked[i]->clock_number]->push_back(tracked[i]);
         }
       }
 
@@ -1829,6 +1852,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
     void disable_spawn() {
       get_conManager().remove(this);
+      this->disable_spawn_true = 1;
     }
 
 
@@ -3134,6 +3158,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
     void disable_spawn() {
       get_conManager().remove(this);
+      this->disable_spawn_true = 1;
     }
 
   protected:
@@ -3609,6 +3634,18 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
     void set_trace(sc_trace_file *trace_file_ptr, std::string full_name) {
       sc_trace(trace_file_ptr, traced_msg, full_name);
+
+      if (this->disable_spawn_true) {
+        sc_spawn_options opt;
+        opt.spawn_method();
+        opt.set_sensitivity(&(_DATNAME_.value_changed()));
+        opt.dont_initialize();
+        sc_spawn(sc_bind(&OutBlocking<Message, MARSHALL_PORT>::trace_convert, this), 0, &opt);
+      }
+    }
+
+    void trace_convert() {
+      traced_msg = convert_from_lv<Message>(_DATNAME_.read());
     }
 
     std::ofstream *log_stream;

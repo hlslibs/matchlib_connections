@@ -26,6 +26,9 @@ using namespace::std;
 // Manually set RAND_SEED since we're dependent on
 // Pacer() behavior to get proper cycle count for this
 // test
+#ifdef RAND_SEED
+#undef RAND_SEED
+#endif
 #define RAND_SEED 1
 
 #include <connections/Pacer.h>

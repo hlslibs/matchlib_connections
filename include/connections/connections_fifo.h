@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 1.2                                                 *
+ *  Software Version: 1.3                                                 *
  *                                                                        *
- *  Release Date    : Thu Aug 11 16:24:59 PDT 2022                        *
+ *  Release Date    : Mon Oct 17 12:31:50 PDT 2022                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.2.9                                               *
+ *  Release Build   : 1.3.0                                               *
  *                                                                        *
  *  Copyright 2022 Siemens                                                *
  *                                                                        *
@@ -35,6 +35,7 @@
 //   Configurable port names: (rdy/vld/dat) legacy: (rdy/val/msg)
 //
 // Revision History:
+//   Add TLM_PORT specialization that uses sized tlm_fifo.
 //
 // Origin: Nivdia Matchlib Buffer class.
 //*************************************************************************
@@ -51,10 +52,7 @@ namespace Connections
   // Helper class for Wrapped and Direct data
   //------------------------------------------------------------------------
   template <typename Message, connections_port_t port_marshall_type = AUTO_PORT>
-  class FifoElem;
-
-  template <typename Message>
-  class FifoElem<Message, SYN_PORT>
+  class FifoElem
   {
   public:
     // Interface
@@ -65,26 +63,7 @@ namespace Connections
 
     FifoElem() : _DATNAME_(sc_gen_unique_name(_DATNAMESTR_)) {}
 
-    FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) { }
-
-    void reset_state() {
-      _DATNAME_.write(0);
-    }
-  };
-
-  template <typename Message>
-  class FifoElem<Message, MARSHALL_PORT>
-  {
-  public:
-    // Interface
-    typedef Wrapped<Message> WMessage;
-    static const unsigned int width = WMessage::width;
-    typedef sc_lv<WMessage::width> MsgBits;
-    sc_signal<MsgBits> _DATNAME_;
-
-    FifoElem() : _DATNAME_(sc_gen_unique_name(_DATNAMESTR_)) {}
-
-    FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) { }
+    FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {}
 
     void reset_state() {
       _DATNAME_.write(0);
@@ -100,24 +79,13 @@ namespace Connections
 
     FifoElem() : _DATNAME_(sc_gen_unique_name(_DATNAMESTR_)) {}
 
-    FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) { }
+    FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {}
 
     void reset_state() {
       Message dc;
       _DATNAME_.write(dc);
     }
   };
-
-  // Because of ports not existing in TLM_PORT and the code depending on it,
-  // we remap to DIRECT_PORT here.
-  template <typename Message>
-  class FifoElem<Message, TLM_PORT> : public FifoElem<Message, DIRECT_PORT>
-  {
-  public:
-    FifoElem() : FifoElem<Message, DIRECT_PORT>() {}
-    FifoElem(sc_module_name name) : FifoElem<Message, DIRECT_PORT>(name) {}
-  };
-
 
   //------------------------------------------------------------------------
   // Fifo
@@ -135,13 +103,22 @@ namespace Connections
     Out<Message, port_marshall_type> deq;
 
     Fifo()
-      : sc_module(sc_module_name(sc_gen_unique_name("buffer"))),
-        clk("clk"),
-        rst("rst") {
+      : sc_module(sc_module_name(sc_gen_unique_name("Fifo")))
+      , clk("clk")
+      , rst("rst")
+      , enq(sc_gen_unique_name("enq"))
+      , deq(sc_gen_unique_name("deq"))
+    { 
       Init();
     }
 
-    Fifo(sc_module_name name) : sc_module(name), clk("clk"), rst("rst") {
+    Fifo(sc_module_name name)
+      : sc_module(name)
+      , clk("clk")
+      , rst("rst")
+      , enq(CONNECTIONS_CONCAT(name, "enq"))
+      , deq(CONNECTIONS_CONCAT(name, "deq"))
+    {
       Init();
     }
 
@@ -209,7 +186,7 @@ namespace Connections
       deq._VLDNAME_.write(!empty);
     }
 
-    // Dequeue messsage
+    // Dequeue message
     void DeqMsg() {
       #ifndef __SYNTHESIS__
       bool empty = (!full.read() && (head.read() == tail.read()));
@@ -329,21 +306,65 @@ namespace Connections
         std::cout << " | ";
       }
     }
-    #endif
+    #endif //__SYNTHESIS__
   };
 
-  // Because of ports not existing in TLM_PORT and the code depending on it,
-  // we remap to DIRECT_PORT here.
+#ifdef CONNECTIONS_SIM_ONLY
+  //------------------------------------------------------------------------
+  // Fifo - TLM_PORT specialization uses sized tlm::tlm_fifo
+  //------------------------------------------------------------------------
   template <typename Message, unsigned int NumEntries>
-  class Fifo<Message, NumEntries, TLM_PORT> : public Fifo<Message, NumEntries, DIRECT_PORT>
+  class Fifo<Message, NumEntries, TLM_PORT> : public sc_module
   {
+    SC_HAS_PROCESS(Fifo);
+
   public:
-    Fifo() : Fifo<Message, NumEntries, DIRECT_PORT>() {}
-    Fifo(sc_module_name name) : Fifo<Message, NumEntries, DIRECT_PORT>(name) {}
+    // Interface (clk and rst not used here, but kept for consistant bindings)
+    sc_in_clk clk;
+    sc_in<bool> rst;
+    In<Message, TLM_PORT> enq;
+    Out<Message, TLM_PORT> deq;
+
+    Fifo()
+      :sc_module(sc_module_name(sc_gen_unique_name("Fifo")))
+      ,clk("clk")
+      ,rst("rst")
+      ,enq(sc_gen_unique_name("enq"))
+      ,deq(sc_gen_unique_name("deq"))
+      ,fifo(sc_gen_unique_name("fifo"), NumEntries)
+    {
+      SC_THREAD(tput);
+      SC_THREAD(tget);
+    }
+
+    Fifo(sc_module_name name)
+      :sc_module(name)
+      ,clk("clk") 
+      ,rst("rst") 
+      ,enq(CONNECTIONS_CONCAT(name, "enq"))
+      ,deq(CONNECTIONS_CONCAT(name, "deq"))
+      ,fifo(CONNECTIONS_CONCAT(name, "fifo"), NumEntries)
+    {
+      SC_THREAD(tput);
+      SC_THREAD(tget);
+    }
+
+    void tput() {
+      while (1) {
+        fifo.put(enq.Pop());
+      }
+    }
+
+    void tget() {
+      while (1) {
+        deq.Push(fifo.get());
+      }
+    }
+
+  protected:
+    tlm::tlm_fifo<Message> fifo;
   };
+#endif // CONNECTIONS_SIM_ONLY
 
 }  // namespace Connections
-
-
 #endif  // CONNECTIONS_FIFO_H
-

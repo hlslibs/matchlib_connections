@@ -13,6 +13,7 @@ options defaults
 
 options set /Input/CppStandard c++11
 options set /Input/CompilerFlags {-DHLS_CATAPULT -DCONNECTIONS_ACCURATE_SIM -DCONNECTIONS_NAMING_ORIGINAL}
+options set /Flows/OSCI/COMP_FLAGS {-Wall -Wno-unknown-pragmas -Wno-unused-label -Wno-class-memaccess}
 
 project new
 
