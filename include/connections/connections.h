@@ -177,7 +177,7 @@ namespace Connections
    * RTL + SystemC co-simulation, while the co-simulation wrapper type maintains the RTL accurate SYN_PORT type.
    *
    * Default port types if no AUTO_PORT define is given are dependent on context. During HLS, SYN_PORT is always used (except
-   * when overriden by FORCE_AUTO_PORT define). During SystemC simulation, TLM_PORT is used if CONNECTIONS_SIM_ONLY is set, otherwise
+   * when overriden by FORCE_AUTO_PORT define). During SystemC simulation, TLM_PORT is used if CONNECTIONS_FAST_SIM is set, otherwise
    * MARSHALL_PORT is used.
    *
    * \code
@@ -191,7 +191,7 @@ namespace Connections
    * during HLS. Useful if a specific port type is desired for targetted unit tests. Example code:
    *
    * \code
-   *      #define FORCE_AUTO_PORT MARSHALL_PORT
+   *      #define FORCE_AUTO_PORT Connections::MARSHALL_PORT
    *      #include <connections/connections.h>
    * \endcode
    *
@@ -244,7 +244,9 @@ namespace Connections
 #define AUTO_PORT FORCE_AUTO_PORT
 #endif // defined(FORCE_AUTO_PORT)
 
-
+#if defined(CONNECTIONS_SYN_SIM)
+  static_assert(AUTO_PORT != TLM_PORT, "Connections::TLM_PORT not supported in Synthesis simulation mode");
+#endif
 
 // Forward declarations
 // These represent what SystemC calls "Ports" (which are basically endpoints)
@@ -451,6 +453,12 @@ namespace Connections
   class SimConnectionsClk;
   SimConnectionsClk &get_sim_clk();
   void set_sim_clk(sc_clock *clk_ptr);
+
+#ifdef CONNECTIONS_SYN_SIM
+  inline void set_sim_clk(sc_clock *clk_ptr) {
+    DBG_CONNECT("Connections sim clock disabled for synthesis simulation mode");
+  }
+#endif
 
   class ConManager;
   ConManager &get_conManager();
@@ -5046,7 +5054,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       //SC_METHOD(do_bypass);
       declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << _DATNAMEIN_ << this->VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
 #endif
     }
 

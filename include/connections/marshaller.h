@@ -53,6 +53,20 @@
 //------------------------------------------------------------------------
 // Marshaller casting functions
 
+// Helper to easily disable verbose X messaging when converting from logic types
+// Use the macro CONNECTIONS_DISABLE_X_WARNINGS 
+template<class Dummy>
+struct connections_x_warnings {
+  static void disable() {
+    static bool once = 1;
+    if ( once ) {
+      sc_report_handler::set_actions(SC_ID_LOGIC_X_TO_BOOL_, SC_DO_NOTHING);
+      sc_report_handler::set_actions(SC_ID_VECTOR_CONTAINS_LOGIC_VALUE_, SC_DO_NOTHING);
+      once = 0;
+    }
+  }
+};
+
 template<typename A, int vec_width>
 void connections_cast_type_to_vector(const A &data, int length, sc_lv<vec_width> &vec)
 {
@@ -62,6 +76,9 @@ void connections_cast_type_to_vector(const A &data, int length, sc_lv<vec_width>
 template<typename A, int vec_width>
 void connections_cast_vector_to_type(const sc_lv<vec_width> &vec, bool is_signed, A *data)
 {
+#ifdef CONNECTIONS_DISABLE_X_WARNINGS
+  connections_x_warnings<void>::disable();
+#endif
   vector_to_type(vec, is_signed, data);
 }
 
