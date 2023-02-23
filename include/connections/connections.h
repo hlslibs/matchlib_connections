@@ -1638,6 +1638,13 @@ namespace Connections
       return m;
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    virtual bool PopBOrNB(Message &m, const bool &blocking) {
+      CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+      return false;
+    }
+
 // Peek
 #pragma design modulario < in >
     virtual Message Peek() {
@@ -1726,6 +1733,24 @@ namespace Connections
       Message m;
       read_msg(m);
       return m;
+    }
+
+// PopBOrNB
+#pragma design modulario < in >
+      bool PopBOrNB(Message &m, const bool &blocking) {
+      // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      bool beat_done = false;
+      do {
+        _RDYNAME_.write(true);
+        wait();
+        beat_done = _VLDNAME_.read() == true;
+      } while (!beat_done && blocking);
+      _RDYNAME_.write(false);
+      read_msg(m);
+      return beat_done;
     }
 
 // Peek
@@ -1827,6 +1852,32 @@ namespace Connections
       return Pop_SIM();
 #else
       return InBlocking_Ports_abs<Message>::Pop();
+#endif
+    }
+
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool& blocking) {
+#ifdef CONNECTIONS_SIM_ONLY
+      // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      if (blocking) {
+        m = Pop_SIM();
+        return true;
+      } else {
+        if (Empty_SIM()) {
+          Message dontcare;
+          m = dontcare;
+          return false;
+        } else {
+          m = ConsumeBuf_SIM();
+          return true;
+        }
+      }
+#else
+      return InBlocking_Ports_abs<Message>::PopBOrNB(m, blocking);
 #endif
     }
 
@@ -2297,6 +2348,12 @@ namespace Connections
       return InBlocking_Ports_abs<Message>::Pop();
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      return InBlocking_Ports_abs<Message>::PopBOrNB(m, blocking);
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -2481,6 +2538,12 @@ namespace Connections
       return InBlocking_SimPorts_abs<Message>::Pop();
     }
 
+    // PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      return InBlocking_SimPorts_abs<Message>::PopBOrNB(m, blocking);
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -2652,6 +2715,12 @@ namespace Connections
       return InBlocking_SimPorts_abs<Message>::Pop();
     }
 
+    // PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool& blocking) {
+      return InBlocking_SimPorts_abs<Message>::PopBOrNB(m, blocking);
+    }
+
     // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -2753,6 +2822,27 @@ namespace Connections
       while ((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable()) && post_pacer->tic()) { wait(); }
 #endif
       return i_fifo->get();
+    }
+
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      // this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      if (blocking) {
+#ifdef __CONN_RAND_STALL_FEATURE
+        while ((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable()) && post_pacer->tic()) { wait(); }
+#endif
+        m = i_fifo->get();
+        return true;
+      } else {
+#ifdef __CONN_RAND_STALL_FEATURE
+        if ((local_rand_stall_override ? local_rand_stall_enable : get_rand_stall_enable()) && post_pacer->tic()) { return false; }
+#endif
+        return i_fifo->nb_get(m);
+      }
     }
 
 // Peek
@@ -2973,6 +3063,13 @@ namespace Connections
       CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
     }
 
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+      return false;
+    }
+
 // PushNB
 #pragma design modulario < out >
     bool PushNB(const Message &m, const bool &do_wait = true) {
@@ -3053,6 +3150,26 @@ namespace Connections
         wait();
       } while (_RDYNAME_.read() != true);
       _VLDNAME_.write(false);
+    }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      // this->write_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      bool beat_done = false;
+      do {
+        _VLDNAME_.write(true);
+        write_msg(m);
+        wait();
+        beat_done = _RDYNAME_.read() == true;
+      } while (!beat_done && blocking);
+      _VLDNAME_.write(false);
+      // Don't invalidate message: calling function might "try transferring"
+      // inside a loop that runs until the message is transferred.
+      return beat_done;
     }
 
 // PushNB
@@ -3141,6 +3258,30 @@ namespace Connections
       return Push_SIM(m);
 #else
       OutBlocking_Ports_abs<Message>::Push(m);
+#endif
+    }
+
+    // PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+#ifdef CONNECTIONS_SIM_ONLY
+      // this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      if (blocking) {
+        Push_SIM(m);
+        return true;
+      } else {
+        if (Full_SIM()) {
+          return false;
+        } else {
+          FillBuf_SIM(m);
+          return true;
+        }
+      }
+#else
+      return OutBlocking_Ports_abs<Message>::PushBOrNB(m, blocking);
 #endif
     }
 
@@ -3292,6 +3433,12 @@ namespace Connections
 #pragma design modulario < out >
     void Push(const Message &m) {
       OutBlocking_Ports_abs<Message>::Push(m);
+    }
+
+    // PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool& blocking) {
+      return OutBlocking_Ports_abs<Message>::PushBOrNB(m, blocking);
     }
 
     // PushNB
@@ -3497,6 +3644,12 @@ namespace Connections
       OutBlocking_SimPorts_abs<Message>::Push(m);
     }
 
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      return OutBlocking_SimPorts_abs<Message>::PushBOrNB(m,blocking);
+    }
+
 // PushNB
 #pragma design modulario < out >
     bool PushNB(const Message &m, const bool &do_wait = true) {
@@ -3690,6 +3843,12 @@ namespace Connections
       OutBlocking_SimPorts_abs<Message>::Push(m);
     }
 
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      return OutBlocking_SimPorts_abs<Message>::PushBOrNB(m, blocking);
+    }
+
 // PushNB
 #pragma design modulario < out >
     bool PushNB(const Message &m, const bool &do_wait = true) {
@@ -3824,6 +3983,21 @@ namespace Connections
       o_fifo->put(m);
       wait(sc_core::SC_ZERO_TIME);
     }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      // this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+    if (blocking) {
+      o_fifo->put(m);
+      wait(sc_core::SC_ZERO_TIME);
+      return true;
+    }
+    return o_fifo->nb_put(m);
+  }
 
 // PushNB
 #pragma design modulario < out >
@@ -4010,6 +4184,13 @@ namespace Connections
       return m;
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+      return false;
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -4033,6 +4214,13 @@ namespace Connections
 #pragma design modulario < out >
     void Push(const Message &m) {
       CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+    }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+      return false;
     }
 
 // PushNB
@@ -4121,6 +4309,24 @@ namespace Connections
       return m;
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      // this->read_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      bool beat_done = false;
+      do {
+        _RDYNAME_.write(true);
+        wait();
+        beat_done = _VLDNAME_.read() == true;
+      } while (!beat_done && blocking);
+      _RDYNAME_.write(false);
+      read_msg(m);
+      return beat_done;
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -4169,6 +4375,24 @@ namespace Connections
         wait();
       } while (_RDYNAME_.read() != true);
       _VLDNAME_.write(false);
+    }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      // this->write_reset_check.check();
+#ifdef CONNECTIONS_SIM_ONLY
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      bool beat_done = false;
+      do {
+        _VLDNAME_.write(true);
+        write_msg(m);
+        wait();
+        beat_done = _RDYNAME_.read() == true;
+      } while (!beat_done && blocking);
+      _VLDNAME_.write(false);
+      return beat_done;
     }
 
 // PushNB
@@ -4361,6 +4585,23 @@ namespace Connections
 #endif
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+#ifdef CONNECTIONS_SIM_ONLY
+      /* assert(! out_bound); */
+
+      this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+
+      return sim_in.PopBOrNB(m, blocking);
+#else
+      return Combinational_Ports_abs<Message>::PopBOrNB(m, blocking);
+#endif
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -4418,6 +4659,25 @@ namespace Connections
       sim_out.Push(m);
 #else
       Combinational_Ports_abs<Message>::Push(m);
+#endif
+    }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+#ifdef CONNECTIONS_SIM_ONLY
+      /* assert(! in_bound); */
+
+      this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      if (blocking) {
+        traced_msg = m;
+      }
+      return sim_out.PushBOrNB(m, blocking);
+#else
+      return Combinational_Ports_abs<Message>::PushBOrNB(m, blocking);
 #endif
     }
 
@@ -4753,6 +5013,12 @@ namespace Connections
       return Combinational_Ports_abs<Message>::Pop();
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      return Combinational_Ports_abs<Message>::PopBOrNB(m, blocking);
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -4771,6 +5037,12 @@ namespace Connections
 #pragma design modulario < out >
     void Push(const Message &m) {
       Combinational_Ports_abs<Message>::Push(m);
+    }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      return Combinational_Ports_abs<Message>::PushBOrNB(m, blocking);
     }
 
 // PushNB
@@ -4888,11 +5160,15 @@ namespace Connections
 #pragma design modulario < in >
     Message Pop() { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::Pop(); }
 #pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PopBOrNB(m, blocking); }
+#pragma design modulario < in >
     Message Peek() { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::Peek(); }
 #pragma design modulario < in >
     bool PopNB(Message &data) { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PopNB(data); }
 #pragma design modulario < out >
     void Push(const Message &m) { Combinational_SimPorts_abs<Message,MARSHALL_PORT>::Push(m); }
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PushBOrNB(m, blocking); }
 #pragma design modulario < out >
     bool PushNB(const Message &m) { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PushNB(m);  }
 
@@ -5090,11 +5366,15 @@ namespace Connections
 #pragma design modulario < in >
     Message Pop() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::Pop(); }
 #pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PopBOrNB(m, blocking); }
+#pragma design modulario < in >
     Message Peek() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::Peek(); }
 #pragma design modulario < in >
     bool PopNB(Message &data) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PopNB(data); }
 #pragma design modulario < out >
     void Push(const Message &m) { Combinational_SimPorts_abs<Message,DIRECT_PORT>::Push(m); }
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PushBOrNB(m, blocking); }
 #pragma design modulario < out >
     bool PushNB(const Message &m) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PushNB(m);  }
 
@@ -5231,6 +5511,20 @@ namespace Connections
       return fifo.get();
     }
 
+// PopBOrNB
+#pragma design modulario < in >
+    bool PopBOrNB(Message &m, const bool &blocking) {
+      this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      if (blocking) {
+          m = fifo.get();
+          return true;
+      }
+      return fifo.nb_get(data);
+    }
+
 // Peek
 #pragma design modulario < in >
     Message Peek() {
@@ -5259,6 +5553,20 @@ namespace Connections
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
       fifo.put(m);
+    }
+
+// PushBOrNB
+#pragma design modulario < out >
+    bool PushBOrNB(const Message &m, const bool &blocking) {
+      this->write_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      if (blocking) {
+        fifo.put(m);
+        return true;
+      }
+      return fifo.nb_put(m);
     }
 
 // PushNB
