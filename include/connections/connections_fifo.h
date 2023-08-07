@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 1.4                                                 *
+ *  Software Version: 1.5                                                 *
  *                                                                        *
- *  Release Date    : Fri Feb  3 14:36:10 PST 2023                        *
+ *  Release Date    : Wed Jul 19 09:26:27 PDT 2023                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 1.4.0                                               *
+ *  Release Build   : 1.5.0                                               *
  *                                                                        *
  *  Copyright 2022 Siemens                                                *
  *                                                                        *
@@ -35,6 +35,7 @@
 //   Configurable port names: (rdy/vld/dat) legacy: (rdy/val/msg)
 //
 // Revision History:
+//   1.5.0 - 2023-05-12 - Fixed CAT-33347 - New "type mapping" feature requires fixes to connections_fifo.h
 //   Add TLM_PORT specialization that uses sized tlm_fifo.
 //
 // Origin: Nivdia Matchlib Buffer class.
@@ -60,13 +61,14 @@ namespace Connections
     static const unsigned int width = WMessage::width;
     typedef sc_lv<WMessage::width> MsgBits;
     sc_signal<MsgBits> _DATNAME_;
+    uint64 init_val{0};
 
     FifoElem() : _DATNAME_(sc_gen_unique_name(_DATNAMESTR_)) {}
 
     FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {}
 
     void reset_state() {
-      _DATNAME_.write(0);
+      _DATNAME_.write(init_val);
     }
   };
 
@@ -76,14 +78,14 @@ namespace Connections
   public:
     // Interface
     sc_signal<Message> _DATNAME_;
+    Message init_val;
 
     FifoElem() : _DATNAME_(sc_gen_unique_name(_DATNAMESTR_)) {}
 
     FifoElem(sc_module_name name) : _DATNAME_(CONNECTIONS_CONCAT(name, _DATNAMESTR_)) {}
 
     void reset_state() {
-      Message dc;
-      _DATNAME_.write(dc);
+      _DATNAME_.write(init_val);
     }
   };
 
@@ -125,7 +127,7 @@ namespace Connections
   protected:
     typedef bool Bit;
     static const int AddrWidth = nbits<NumEntries>::val;
-    typedef ac_int<AddrWidth, false> BuffIdx;
+    typedef sc_uint<AddrWidth> BuffIdx;
 
     // Internal wires
     sc_signal<Bit> full_next;
@@ -196,7 +198,7 @@ namespace Connections
         deq._DATNAME_.write(buffer[tail.read()]._DATNAME_.read());
       #ifndef __SYNTHESIS__
       } else {
-        deq._DATNAME_.write(0);
+        deq._DATNAME_.write(buffer[0].init_val);
       }
       #endif
     }
