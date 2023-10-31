@@ -19,6 +19,7 @@
 // marshaller.h
 //
 // Revision History:
+//  2.1.0    - CAT-34971 - clean up compiler warnings (added methods to set default values)
 //  1.2.8    - fix number of long bits which can change based on 32-bit/64-bit target arch
 //  1.2.6    - CAT-29221
 //  1.2.4    - Add Connections marshaller support for ac_float
@@ -829,5 +830,20 @@ protected:
   /* Signal whether A or B is set (0 for A and 1 for B). */
   sc_lv<1> tag;
 };
+
+template <class T>
+void set_default_value(T& v) {
+  v = T();
+}
+
+template <int W, bool S=true>
+void set_default_value(ac_int<W,S>& v) {
+  v = ac_int<W, S>(0);
+}
+
+template <int W, int I, bool S=true>
+void set_default_value(ac_fixed<W, I, S>& v) {
+  v = ac_fixed<W, I, S>(0);
+}
 
 #endif  // __CONNECTIONS__MARSHALLER_H_

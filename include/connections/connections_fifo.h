@@ -35,6 +35,9 @@
 //   Configurable port names: (rdy/vld/dat) legacy: (rdy/val/msg)
 //
 // Revision History:
+//   2.1.0 - 2023-10-16 - Fixed CAT-34870 - Include iomanip for setw
+//   2.1.0 - 2023-10-16 - Add reset polarity check in line_trace()
+//   2.1.0 - 2023-10-13 - Fixed CAT-34421
 //   1.5.0 - 2023-05-12 - Fixed CAT-33347 - New "type mapping" feature requires fixes to connections_fifo.h
 //   Add TLM_PORT specialization that uses sized tlm_fifo.
 //
@@ -43,7 +46,9 @@
 
 #ifndef CONNECTIONS_FIFO_H
 #define CONNECTIONS_FIFO_H
-
+#ifndef __SYNTHESIS__
+#include <iomanip>
+#endif
 #include "connections.h"
 
 namespace Connections
@@ -158,6 +163,9 @@ namespace Connections
       sensitive << deq._RDYNAME_ << full << head << tail;
       #else
       sensitive << tail;
+      for(int i = 0; i < NumEntries; i++){
+        sensitive << buffer[i]._DATNAME_;
+      }
       #endif
 
       SC_METHOD(HeadNext);
@@ -288,7 +296,12 @@ namespace Connections
   public:
     #ifndef __SYNTHESIS__
     void line_trace() {
-      if (rst.read()) {
+      #ifdef CONNECTIONS_POS_RESET
+        bool rst_active = true;
+      #else
+        bool rst_active = false;
+      #endif
+      if (rst.read() != rst_active) {
         unsigned int width = (Message().length() / 4);
         // Enqueue port
         if (enq._VLDNAME_.read() && enq._RDYNAME_.read()) {
@@ -365,6 +378,12 @@ namespace Connections
 
   protected:
     tlm::tlm_fifo<Message> fifo;
+
+  public:
+    #ifndef __SYNTHESIS__
+    void line_trace() {};
+    #endif // __SYNTHESIS__
+
   };
 #endif // CONNECTIONS_SIM_ONLY
 

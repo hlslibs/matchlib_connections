@@ -18,6 +18,7 @@
 // connections.h
 //
 // Revision History:
+//   2.1.0   - CAT-34971 - clean up compiler warnings about uninitialized values
 //   1.3.0   - CAT-31235 - fix waveform tracing bug in pre-HLS matchlib model
 //   1.2.6   - CAT-29206 - fix for waveform tracing
 //             CAT-29244 - improved error checking
@@ -1846,6 +1847,7 @@ namespace Connections
 #endif
       if (Empty_SIM()) {
         Message m;
+        set_default_value(m);
         data = m;
         return false;
       } else {
@@ -3772,6 +3774,7 @@ namespace Connections
   protected:
     void reset_msg() {
       Message dc;
+      set_default_value(dc);
       _DATNAME_.write(dc);
     }
 
@@ -3781,6 +3784,7 @@ namespace Connections
 
     void invalidate_msg() {
       Message dc;
+      set_default_value(dc);
       _DATNAME_.write(dc);
     }
   };
@@ -5101,6 +5105,7 @@ namespace Connections
   protected:
     void reset_msg() {
       Message dc;
+      set_default_value(dc);
 #ifdef CONNECTIONS_SIM_ONLY
       _DATNAMEOUT_.write(dc);
 #else
@@ -5126,6 +5131,7 @@ namespace Connections
 
     void invalidate_msg() {
       Message dc;
+      set_default_value(dc);
 #ifdef CONNECTIONS_SIM_ONLY
       _DATNAMEOUT_.write(dc);
 #else
