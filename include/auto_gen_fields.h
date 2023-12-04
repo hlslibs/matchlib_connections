@@ -1,9 +1,7 @@
 // INSERT_EULA_COPYRIGHT: 2023
 
-// Prototype code - not fully production ready
-
 // Author: Stuart Swan, Platform Architect, Siemens EDA
-// Date: 10 Aug 2023
+// Date: 26 Oct 2023
 
 #pragma once
 
@@ -17,9 +15,99 @@
 #define OK_BOOST_PASS 1
 #endif
 
+#ifndef __CONNECTIONS__CONNECTIONS_UTILS_H_
+// Prevent redefine warnings from NVHLS
+#undef CONNECTIONS_ASSERT_MSG
+#undef CONNECTIONS_SIM_ONLY_ASSERT_MSG
+#include <connections/connections_utils.h>
+#endif
+
+#ifndef NVHLS_CONNECTIONS_UTILS_H_
+// Prevent redefine warnings from NVHLS
+#undef CONNECTIONS_ASSERT_MSG
+#undef CONNECTIONS_SIM_ONLY_ASSERT_MSG
+#include <nvhls_connections_utils.h>
+#endif
+
 #include <boost/preprocessor/list/for_each.hpp>
 #include <boost/preprocessor/tuple/to_list.hpp>
 #include <connections/marshaller.h>
+#include <UIntOrEmpty.h>
+
+#include <type_traits>
+
+struct field_info {
+  std::string name;    // field name
+  unsigned width{0};   // bit width
+  unsigned dim1{0};    // left most dimension -> 0 means does not exist
+  unsigned dim0{0};    // right most dimension -> 0 means does not exist
+  std::vector<field_info> fields;  // child field info if struct/class type
+
+  inline friend std::ostream &operator<<(ostream &os, const field_info &rhs) { 
+   os << rhs.name << " width: " << rhs.width << 
+      " dim1: " << rhs.dim1 << " dim0: " << rhs.dim0 << "\n"  ;
+   if (rhs.fields.size()) {
+     os << "{\n";
+     for (unsigned i=0; i < rhs.fields.size(); ++i)
+       os << rhs.fields[i];
+     os << "}\n";
+   }
+   return os;
+  }
+
+  void stream_indent(ostream &os, std::string indent) { 
+   os << indent << name << " width: " << width << " dim1: " << dim1 << " dim0: " << dim0 << "\n"  ;
+   if (fields.size()) {
+     os << indent << "{\n";
+     for (unsigned i=0; i < fields.size(); ++i)
+       fields[i].stream_indent(os, indent + " ");
+     os << indent << "}\n";
+   }
+  }
+
+};
+
+// Primary template
+template <typename T, typename = void>
+struct call_gen_field_info {
+#ifndef CCS_SYSC
+    static void gen_field_info(std::vector<field_info>& vec) { }
+#endif
+};
+
+// Helper trait to detect .Marshall() member function
+template <typename T, typename = void>
+struct has_Marshall : std::false_type {};
+
+#ifndef CCS_SYSC
+/**** Long term solution -- will automatically cause compile error in correct situations ****/
+template <typename T>
+struct has_Marshall<T, 
+  decltype(std::declval<T>().Marshall(std::declval<Marshaller<Wrapped<T>::width>&>()), void())> 
+  : std::true_type {};
+#endif
+
+/**** alternative implementation has less rigorous error checking, may be useful for "bring up"
+template <typename T>
+struct has_Marshall<T, 
+  decltype(std::declval<T>().gen_field_info(std::declval<std::vector<field_info>&>()), void())> 
+  : std::true_type {};
+****/
+
+#ifdef CCS_SYSC
+template <typename T>
+struct call_gen_field_info<T> {
+    static void gen_field_info(std::vector<field_info>& vec) { }
+};
+#else
+// SFINAE-based specialization for types with a `.Marshall()` member
+template <typename T>
+struct call_gen_field_info<T, typename std::enable_if<has_Marshall<T>::value>::type> {
+    static void gen_field_info(std::vector<field_info>& vec) { 
+     T::gen_field_info(vec); 
+    }
+};
+#endif
 
 
 template <class T>
@@ -36,6 +124,14 @@ public:
 
   inline static void trace(sc_trace_file *tf, const elem_type &v, const std::string &NAME ) {
     sc_trace(tf,v,NAME);
+  }
+
+  inline static void info(std::vector<field_info>& vec, const std::string &NAME ) {
+   field_info i;
+   i.name = NAME;
+   i.width = Wrapped<T>::width;
+   call_gen_field_info<T>::gen_field_info(i.fields);
+   vec.push_back(i);
   }
 
   template <class S> inline static void stream(ostream& os, const S& rhs)
@@ -67,6 +163,15 @@ public:
       os << NAME << "_" << i;
       sc_trace(tf,v[i], os.str());
     }
+  }
+
+  inline static void info(std::vector<field_info>& vec, const std::string &NAME ) {
+   field_info i;
+   i.name = NAME;
+   i.width = Wrapped<T>::width;
+   i.dim0 = d1;
+   call_gen_field_info<T>::gen_field_info(i.fields);
+   vec.push_back(i);
   }
 
   template <class S> inline static void stream(ostream& os, const S& rhs)
@@ -115,6 +220,16 @@ public:
       }
   }
 
+  inline static void info(std::vector<field_info>& vec, const std::string &NAME ) {
+   field_info i;
+   i.name = NAME;
+   i.width = Wrapped<T>::width ;
+   i.dim1 = d2;
+   i.dim0 = d1;
+   call_gen_field_info<T>::gen_field_info(i.fields);
+   vec.push_back(i);
+  }
+
   template <class S> inline static void stream(ostream& os, const S& rhs)
   {
     os << "{";
@@ -143,6 +258,33 @@ public:
   }
 };
 
+template <>
+class type_traits<nvhls::EmptyField>
+{
+public:
+  static const bool is_array{false};
+  typedef nvhls::EmptyField elem_type;
+
+  template <unsigned int Size> static void Marshall(Marshaller<Size>& m, elem_type& A) {
+  }
+
+  template <class S> inline static void trace(sc_trace_file *tf, const S& v, const std::string &NAME )
+  {
+  }
+
+  inline static void info(std::vector<field_info>& vec, const std::string &NAME ) {
+  }
+
+  template <class S> inline static void stream(ostream& os, const S& rhs)
+  {
+    os << "{} ";
+  }
+
+  template <class S> static bool equal(const S& lhs, const S& rhs) { 
+    return true;
+  }
+};
+
 template <class T>
 class calc_bit_width
 {
@@ -164,6 +306,13 @@ public:
   static const unsigned int width = Wrapped<T>::width * D1 * D2;
 };
 
+template <>
+class calc_bit_width<nvhls::EmptyField>
+{
+public:
+  static const unsigned int width = 0;
+};
+
 
 #define GEN_MARSHALL_FIELD(R, _, F) \
    type_traits<decltype(F)>::Marshall(m, F); 
@@ -180,8 +329,18 @@ public:
    //
 
 #define GEN_TRACE_METHOD(FIELDS) \
-  inline friend void sc_trace(sc_trace_file *tf, const this_type &v, const std::string &NAME ) { \
+  inline friend void sc_trace(sc_trace_file *tf, const auto_gen_type &v, const std::string &NAME ) { \
      BOOST_PP_LIST_FOR_EACH(GEN_TRACE_FIELD, _, FIELDS); \
+  }
+  //
+
+#define GEN_INFO_FIELD(R, _, F) \
+   type_traits<decltype(F)>::info(vec, #F); 
+   //
+
+#define GEN_INFO_METHOD(FIELDS) \
+  inline static void gen_field_info(std::vector<field_info>& vec) { \
+     BOOST_PP_LIST_FOR_EACH(GEN_INFO_FIELD, _, FIELDS); \
   }
   //
 
@@ -191,7 +350,7 @@ public:
    //
 
 #define GEN_STREAM_METHOD(FIELDS) \
-  inline friend std::ostream &operator<<(ostream &os, const this_type &rhs) { \
+  inline friend std::ostream &operator<<(ostream &os, const auto_gen_type &rhs) { \
     BOOST_PP_LIST_FOR_EACH(GEN_STREAM_FIELD, _, FIELDS); \
     return os; \
   }
@@ -211,10 +370,8 @@ public:
    && type_traits<decltype(F)>::equal(F, rhs.F)
   //
 
-
-
 #define GEN_EQUAL(FIELDS) \
-  bool operator==(const this_type & rhs) const {  \
+  bool operator==(const auto_gen_type & rhs) const {  \
     return true \
       BOOST_PP_LIST_FOR_EACH(GEN_EQUAL_FIELD, _, FIELDS) \
     ; \
@@ -226,8 +383,10 @@ public:
 
 #define AUTO_GEN_FIELD_METHODS(THIS_TYPE, X) \
   typedef THIS_TYPE this_type; \
+  typedef THIS_TYPE auto_gen_type; \
   GEN_MARSHALL_METHOD(FIELD_LIST(X)) \
   GEN_TRACE_METHOD(FIELD_LIST(X)) \
+  GEN_INFO_METHOD(FIELD_LIST(X)) \
   GEN_STREAM_METHOD(FIELD_LIST(X)) \
   GEN_WIDTH(FIELD_LIST(X)) \
   GEN_EQUAL(FIELD_LIST(X))
