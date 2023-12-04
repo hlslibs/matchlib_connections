@@ -95,6 +95,8 @@ public:
       hold_stall_prob(hold_stall_prob_ * static_cast<float>(precision)),
       stalled(false) {}
 
+  virtual ~Pacer() {}
+
   virtual void reset() { stalled = false; }
 
   virtual void set_stall_prob(float &newProb) { stall_prob=(static_cast<float>(newProb) * precision); }
