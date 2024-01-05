@@ -1,4 +1,5 @@
 
+
 /*
  * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  *
@@ -18,6 +19,9 @@
 // connections.h
 //
 // Revision History:
+//   2.1.1   - CAT-31705 - free dynamically allocated memory
+//             CAT-35251 - applied missing '#pragma builtin modulario' to DIRECT_PORT methods
+//             CAT-34936 - support for trace/log for DIRECT_PORT
 //   2.1.0   - CAT-34971 - clean up compiler warnings about uninitialized values
 //   1.3.0   - CAT-31235 - fix waveform tracing bug in pre-HLS matchlib model
 //   1.2.6   - CAT-29206 - fix for waveform tracing
@@ -612,6 +616,16 @@ namespace Connections
        sibling_port=0; non_leaf_port=false; clock_number=0; 
        DBG_CONNECT("Blocking_abs CTOR: " << std::hex << (void*)this );
     };
+    virtual ~Blocking_abs() {
+      for (std::vector<sc_module*>::iterator it=sc_mod_alloc.begin(); it!=sc_mod_alloc.end(); ++it) {
+        delete *it;
+      }
+      sc_mod_alloc.clear();
+      for (std::vector<Blocking_abs*>::iterator it=con_obj_alloc.begin(); it!=con_obj_alloc.end(); ++it) {
+        delete *it;
+      }
+      con_obj_alloc.clear();
+    }
 
     virtual bool Post() {return false;};
     virtual bool Pre()  {return false;};
@@ -624,6 +638,8 @@ namespace Connections
     virtual void do_reset_check() {}
     virtual std::string report_name() {return std::string("unnamed"); }
     Blocking_abs *sibling_port;
+    std::vector<sc_module*> sc_mod_alloc;
+    std::vector<Blocking_abs*> con_obj_alloc;
   };
 
 
@@ -631,6 +647,13 @@ namespace Connections
   {
   public:
     ConManager() { }
+
+    ~ConManager() {
+      for (std::vector<std::vector<Blocking_abs *>*>::iterator it=tracked_per_clk.begin(); it!=tracked_per_clk.end(); ++it) {
+        delete *it;
+      }
+      tracked_per_clk.clear();
+    }
 
     std::vector<Blocking_abs *> tracked;
     std::vector<Connections_BA_abs *> tracked_annotate;
@@ -1258,7 +1281,8 @@ namespace Connections
 // For safety, disallow DIRECT_PORT <-> MARSHALL_PORT binding helpers during HLS.
 #ifndef __SYNTHESIS__
 
-  template <typename Message> SC_MODULE(MarshalledToDirectOutPort)
+  template <typename Message>
+  SC_MODULE(MarshalledToDirectOutPort)
   {
     typedef Wrapped<Message> WMessage;
     static const unsigned int width = WMessage::width;
@@ -1290,7 +1314,8 @@ namespace Connections
     }
   };
 
-  template <typename Message> SC_MODULE(MarshalledToDirectInPort)
+  template <typename Message>
+  SC_MODULE(MarshalledToDirectInPort)
   {
     typedef Wrapped<Message> WMessage;
     static const unsigned int width = WMessage::width;
@@ -1322,7 +1347,8 @@ namespace Connections
     }
   };
 
-  template <typename Message> SC_MODULE(DirectToMarshalledInPort)
+  template <typename Message>
+  SC_MODULE(DirectToMarshalledInPort)
   {
     typedef Wrapped<Message> WMessage;
     static const unsigned int width = WMessage::width;
@@ -1351,7 +1377,8 @@ namespace Connections
     }
   };
 
-  template <typename Message> SC_MODULE(DirectToMarshalledOutPort)
+  template <typename Message>
+  SC_MODULE(DirectToMarshalledOutPort)
   {
     typedef Wrapped<Message> WMessage;
     static const unsigned int width = WMessage::width;
@@ -1777,6 +1804,12 @@ namespace Connections
   {
   public:
 
+    virtual ~InBlocking_SimPorts_abs() {
+#ifdef __CONN_RAND_STALL_FEATURE
+      if (!!post_pacer) delete post_pacer;
+      post_pacer = NULL;
+#endif
+    }
     // Protected because generic
   protected:
     // Default constructor
@@ -1867,7 +1900,6 @@ namespace Connections
 
 
 #ifdef __CONN_RAND_STALL_FEATURE
-
     void set_rand_stall_prob(float &newProb) {
       if (newProb > 0) {
         float tmpFloat = (newProb/100.0);
@@ -2358,6 +2390,7 @@ namespace Connections
       DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
       dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
+      this->sc_mod_alloc.push_back(dynamic_d2mport);
       dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
@@ -2375,6 +2408,7 @@ namespace Connections
       DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
       dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
+      this->sc_mod_alloc.push_back(dynamic_d2mport);
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -2399,6 +2433,8 @@ namespace Connections
       dynamic_tlm2d_port = new TLMToDirectOutPort<Message>(sc_gen_unique_name("dynamic_tlm2d_port"), rhs.fifo);
       dynamic_tlm2d_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb"));
+      this->con_obj_alloc.push_back(dynamic_tlm2d_port);
+      this->con_obj_alloc.push_back(dynamic_comb);
 
       // Bind the marshaller to combinational
       this->Bind(*dynamic_comb);
@@ -2542,6 +2578,7 @@ namespace Connections
       DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
       dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
+      this->sc_mod_alloc.push_back(dynamic_d2mport);
       dynamic_d2mport->_DATNAME_(rhs._DATNAME_);
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
@@ -2559,6 +2596,7 @@ namespace Connections
       DirectToMarshalledInPort<Message> *dynamic_d2mport;
 
       dynamic_d2mport = new DirectToMarshalledInPort<Message>(sc_gen_unique_name("dynamic_d2mport"));
+      this->sc_mod_alloc.push_back(dynamic_d2mport);
       this->_DATNAME_(dynamic_d2mport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -2583,6 +2621,8 @@ namespace Connections
       dynamic_tlm2d_port = new TLMToDirectOutPort<Message>(sc_gen_unique_name("dynamic_tlm2d_port"), rhs.fifo);
       dynamic_tlm2d_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb"));
+      this->con_obj_alloc.push_back(dynamic_tlm2d_port);
+      this->con_obj_alloc.push_back(dynamic_comb);
 
       // Bind the marshaller to combinational
       this->Bind(*dynamic_comb);
@@ -2649,6 +2689,7 @@ namespace Connections
     }
 
     // Pop
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() {
       return InBlocking_SimPorts_abs<Message>::Pop();
@@ -2661,6 +2702,7 @@ namespace Connections
     }
 
     // PopNB
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data, const bool &do_wait = true) {
       return InBlocking_SimPorts_abs<Message>::PopNB(data, do_wait);
@@ -2723,6 +2765,13 @@ namespace Connections
       i_fifo(CONNECTIONS_CONCAT(name, "i_fifo")) {
 #ifdef __CONN_RAND_STALL_FEATURE
       Init_SIM(name);
+#endif
+    }
+
+    virtual ~InBlocking() {
+#ifdef __CONN_RAND_STALL_FEATURE
+      if (!!post_pacer) delete post_pacer;
+      post_pacer = NULL;
 #endif
     }
 
@@ -3348,6 +3397,7 @@ namespace Connections
     void Bind(OutBlocking<Message, DIRECT_PORT> &rhs) {
       MarshalledToDirectOutPort<Message> *dynamic_m2dport;
       dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
+      this->sc_mod_alloc.push_back(dynamic_m2dport);
 
 #ifdef CONNECTIONS_SIM_ONLY
       dynamic_m2dport->sibling_port = this; 
@@ -3366,6 +3416,7 @@ namespace Connections
       MarshalledToDirectOutPort<Message> *dynamic_m2dport;
 
       dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
+      this->sc_mod_alloc.push_back(dynamic_m2dport);
       this->_DATNAME_(dynamic_m2dport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -3392,6 +3443,8 @@ namespace Connections
       dynamic_d2tlm_port = new DirectToTLMInPort<Message>(sc_gen_unique_name("dynamic_d2tlm_port"), rhs.fifo);
       dynamic_d2tlm_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb"));
+      this->con_obj_alloc.push_back(dynamic_d2tlm_port);
+      this->con_obj_alloc.push_back(dynamic_comb);
 
       // Bind the marshaller to combinational
       this->Bind(*dynamic_comb);
@@ -3539,6 +3592,7 @@ namespace Connections
     void Bind(OutBlocking<Message, DIRECT_PORT> &rhs) {
       MarshalledToDirectOutPort<Message> *dynamic_m2dport;
       dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
+      this->sc_mod_alloc.push_back(dynamic_m2dport);
 
 #ifdef CONNECTIONS_SIM_ONLY
       dynamic_m2dport->sibling_port = this; 
@@ -3557,6 +3611,7 @@ namespace Connections
       MarshalledToDirectOutPort<Message> *dynamic_m2dport;
 
       dynamic_m2dport = new MarshalledToDirectOutPort<Message>(sc_gen_unique_name("dynamic_m2dport"));
+      this->sc_mod_alloc.push_back(dynamic_m2dport);
       this->_DATNAME_(dynamic_m2dport->msgbits);
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -3583,6 +3638,8 @@ namespace Connections
       dynamic_d2tlm_port = new DirectToTLMInPort<Message>(sc_gen_unique_name("dynamic_d2tlm_port"), rhs.fifo);
       dynamic_d2tlm_port->sibling_port = this;
       dynamic_comb = new Combinational<Message, DIRECT_PORT>(sc_gen_unique_name("dynamic_comb") );
+      this->con_obj_alloc.push_back(dynamic_d2tlm_port);
+      this->con_obj_alloc.push_back(dynamic_comb);
 
       // Bind the marshaller to combinational
       this->Bind(*dynamic_comb);
@@ -3674,6 +3731,9 @@ namespace Connections
   public:
     // Interface
     sc_out<Message> _DATNAME_;
+#ifdef CONNECTIONS_SIM_ONLY
+    OutBlocking<Message, DIRECT_PORT>* driver{0};
+#endif
 
     OutBlocking() : OutBlocking_SimPorts_abs<Message>(),
       _DATNAME_(sc_gen_unique_name(_DATNAMEOUTSTR_)) {}
@@ -3687,12 +3747,14 @@ namespace Connections
     }
 
 // Push
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) {
       OutBlocking_SimPorts_abs<Message>::Push(m);
     }
 
 // PushNB
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m, const bool &do_wait = true) {
       return OutBlocking_SimPorts_abs<Message>::PushNB(m, do_wait);
@@ -3703,6 +3765,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       rhs.disable_spawn();
       rhs.non_leaf_port = true;
+      rhs.driver = this;
 #endif
       this->_DATNAME_(rhs._DATNAME_);
       this->_VLDNAME_(rhs._VLDNAME_);
@@ -3715,6 +3778,7 @@ namespace Connections
       this->_DATNAME_(rhs._DATNAMEIN_);
       this->_VLDNAME_(rhs._VLDNAMEIN_);
       this->_RDYNAME_(rhs._RDYNAMEIN_);
+      rhs.driver = this;
       rhs.in_bound = true;
       rhs.in_ptr = this;
 #else
@@ -3729,6 +3793,7 @@ namespace Connections
     void Bind(OutBlocking<Message, MARSHALL_PORT> &rhs) {
       DirectToMarshalledOutPort<Message> *dynamic_d2mport;
       dynamic_d2mport = new DirectToMarshalledOutPort<Message>("dynamic_d2mport");
+      this->sc_mod_alloc.push_back(dynamic_d2mport);
 
 #ifdef CONNECTIONS_SIM_ONLY
       dynamic_d2mport->sibling_port = this; 
@@ -3746,6 +3811,7 @@ namespace Connections
       DirectToMarshalledOutPort<Message> *dynamic_d2mport;
 
       dynamic_d2mport = new DirectToMarshalledOutPort<Message>("dynamic_d2mport");
+      this->sc_mod_alloc.push_back(dynamic_d2mport);
       this->_DATNAME_(dynamic_d2mport->_DATNAME_);
 
 #ifdef CONNECTIONS_SIM_ONLY
@@ -3778,8 +3844,20 @@ namespace Connections
       _DATNAME_.write(dc);
     }
 
+#ifdef CONNECTIONS_SIM_ONLY
+    Message traced_msg;
+#endif
+
     void write_msg(const Message &m) {
+#ifdef CONNECTIONS_SIM_ONLY
+      traced_msg = m;
+#endif
       _DATNAME_.write(m);
+#ifdef CONNECTIONS_SIM_ONLY
+      if (log_stream)
+      { *log_stream << std::dec << log_number << " | " << std::hex <<  m << " | " << sc_time_stamp() << "\n"; }
+#endif
+
     }
 
     void invalidate_msg() {
@@ -3787,6 +3865,39 @@ namespace Connections
       set_default_value(dc);
       _DATNAME_.write(dc);
     }
+
+  public:
+#ifdef CONNECTIONS_SIM_ONLY
+    void set_trace(sc_trace_file *trace_file_ptr, std::string full_name) {
+      sc_trace(trace_file_ptr, traced_msg, full_name);
+
+      if (this->disable_spawn_true) {
+        sc_spawn_options opt;
+        opt.spawn_method();
+        opt.set_sensitivity(&(_DATNAME_.value_changed()));
+        opt.dont_initialize();
+        sc_spawn(sc_bind(&OutBlocking<Message, DIRECT_PORT>::trace_convert, this), 0, &opt);
+      }
+    }
+
+    void trace_convert() {
+      traced_msg = _DATNAME_.read();
+    }
+
+    std::ofstream *log_stream{0};
+    int log_number{0};
+
+    void set_log(int num, std::ofstream *fp) {
+      log_stream = fp;
+      log_number = num;
+    }
+#endif
+  };
+
+  template <typename Message>
+  class write_log_if : public sc_interface {
+  public:
+    virtual void write_log(const Message& m) = 0;
   };
 
 
@@ -3826,6 +3937,7 @@ namespace Connections
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
       o_fifo->put(m);
+      write_log->write_log(m);
       wait(sc_core::SC_ZERO_TIME);
     }
 
@@ -3836,17 +3948,22 @@ namespace Connections
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
-      return o_fifo->nb_put(m);
+      bool ret = o_fifo->nb_put(m);
+      if (ret)
+        write_log->write_log(m);
+      return ret;
     }
 
     // Bind to OutBlocking
     void Bind(OutBlocking<Message, TLM_PORT> &rhs) {
       this->o_fifo(rhs.o_fifo);
+      this->write_log(rhs.write_log);
     }
 
     // Bind to Combinational
     void Bind(Combinational<Message, TLM_PORT> &rhs) {
       this->o_fifo(rhs.fifo);
+      this->write_log(rhs);
     }
 
     // Binding
@@ -3857,6 +3974,7 @@ namespace Connections
 
   protected:
     sc_port<tlm::tlm_fifo_put_if<Message> > o_fifo;
+    sc_port<write_log_if<Message> > write_log;
   };
 #endif //CONNECTIONS_SIM_ONLY
 
@@ -5042,6 +5160,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
     sc_signal<Message> _DATNAMEIN_;
     sc_signal<Message> _DATNAMEOUT_;
+    OutBlocking<Message, DIRECT_PORT> *driver{0};  // DGB
 #else
     sc_signal<Message> _DATNAME_;
 #endif
@@ -5091,14 +5210,18 @@ namespace Connections
     // Parent functions, to get around Catapult virtual function bug.
     void ResetRead() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::ResetRead(); }
     void ResetWrite() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::ResetWrite(); }
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::Pop(); }
 #pragma design modulario < in >
     Message Peek() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::Peek(); }
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PopNB(data); }
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) { Combinational_SimPorts_abs<Message,DIRECT_PORT>::Push(m); }
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PushNB(m);  }
 
@@ -5142,7 +5265,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
   protected:
 
-    class DummyPortManager : public sc_module
+    class DummyPortManager : public sc_module, public sc_trace_marker
     {
       SC_HAS_PROCESS(DummyPortManager);
     private:
@@ -5183,6 +5306,41 @@ namespace Connections
         }
       }
 
+      virtual void set_trace(sc_trace_file *trace_file_ptr) {
+        sc_trace(trace_file_ptr, parent._VLDNAMEOUT_, parent._VLDNAMEOUT_.name());
+        sc_trace(trace_file_ptr, parent._RDYNAMEOUT_, parent._RDYNAMEOUT_.name());
+
+        if (!parent.driver) {
+          // this case occurs for "port-less channel access", ie comb_chan.Push(val)
+          OutBlocking<Message, DIRECT_PORT> *driver = &(parent.sim_out);
+          driver->set_trace(trace_file_ptr, parent._DATNAMEOUT_.name());
+        } else {
+          OutBlocking<Message, DIRECT_PORT> *driver = parent.driver;
+          while (driver->driver)
+          { driver = driver->driver; }
+
+          driver->set_trace(trace_file_ptr, parent._DATNAMEOUT_.name());
+        }
+      }
+
+      bool set_log(std::ofstream *os, int &log_num, std::string &path_name) {
+        if (!parent.driver) {
+          OutBlocking<Message, DIRECT_PORT> *driver = &(parent.sim_out);
+
+          path_name = parent.name();
+          driver->set_log(++log_num, os);
+          return true;
+        } else {
+          OutBlocking<Message, DIRECT_PORT> *driver = parent.driver;
+          while (driver->driver)
+          { driver = driver->driver; }
+
+          path_name = parent._DATNAMEOUT_.name();
+          driver->set_log(++log_num, os);
+          return true;
+        }
+      }
+
     } dummyPortManager;
 #endif
   };
@@ -5190,7 +5348,12 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
   template <typename Message>
-  class Combinational <Message, TLM_PORT> : public Combinational_Ports_abs<Message>, public Blocking_abs
+  class Combinational <Message, TLM_PORT> :
+    public Combinational_Ports_abs<Message>
+  , public Blocking_abs
+  , public sc_trace_marker
+  , public sc_object
+  , public write_log_if<Message>
   {
   public:
 
@@ -5265,6 +5428,7 @@ namespace Connections
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
       fifo.put(m);
+      write_log(m);
     }
 
 // PushNB
@@ -5274,8 +5438,29 @@ namespace Connections
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
-      return fifo.nb_put(m);
+      bool ret = fifo.nb_put(m);
+      if (ret)
+       write_log(m);
+
+      return ret;
     }
+
+    virtual void set_trace(sc_trace_file *trace_file_ptr) {}
+
+    virtual bool set_log(std::ofstream *os, int &log_num, std::string &path_name) {
+     log_stream = os;
+     log_number = ++log_num;
+     path_name = fifo.name();
+     return 1;
+    }
+
+    virtual void write_log(const Message& m) {
+      if (log_stream)
+       *log_stream << std::dec << log_number << " | " << std::hex <<  m << " | " << sc_time_stamp() << "\n"; 
+    }
+
+    std::ofstream *log_stream{0};
+    int log_number{0};
 
   protected:
     void reset_msg() {
