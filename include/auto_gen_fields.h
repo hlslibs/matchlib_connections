@@ -4,7 +4,7 @@
  *                                                                        *
  *  Software Version: 2.1                                                 *
  *                                                                        *
- *  Release Date    : Fri Jan  5 08:41:49 PST 2024                        *
+ *  Release Date    : Mon Jan 15 20:15:38 PST 2024                        *
  *  Release Type    : Production Release                                  *
  *  Release Build   : 2.1.1                                               *
  *                                                                        *
@@ -30,7 +30,18 @@
  *************************************************************************/
 
 // Author: Stuart Swan, Platform Architect, Siemens EDA
-// Date: 26 Oct 2023
+// Date: 22 Dec 2023
+
+//*****************************************************************************************
+// File: auto_gen_fields.h
+//
+// Description: C++ Macros to simplify making user-defined struct types work in Connections
+//
+// Revision History:
+//       2.1.1 - Added back in typedef of 'this_type' for backward compatibility with
+//               older designs
+//             - Fix for CAT-35587 from Stuart Swan
+//*****************************************************************************************
 
 #pragma once
 
@@ -253,8 +264,8 @@ public:
    field_info i;
    i.name = NAME;
    i.width = Wrapped<T>::width ;
-   i.dim1 = d2;
-   i.dim0 = d1;
+   i.dim1 = d1;
+   i.dim0 = d2;
    call_gen_field_info<T>::gen_field_info(i.fields);
    vec.push_back(i);
   }

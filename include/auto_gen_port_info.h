@@ -4,7 +4,7 @@
  *                                                                        *
  *  Software Version: 2.1                                                 *
  *                                                                        *
- *  Release Date    : Fri Jan  5 08:41:49 PST 2024                        *
+ *  Release Date    : Mon Jan 15 20:15:38 PST 2024                        *
  *  Release Type    : Production Release                                  *
  *  Release Build   : 2.1.1                                               *
  *                                                                        *
@@ -29,17 +29,25 @@
  *                                                                        *
  *************************************************************************/
 
-// Prototype code - not fully production ready
-
 // Author: Stuart Swan, Platform Architect, Siemens EDA
-// Date: 6 Oct 2023
+// Date: 22 Dec 2023
+
+//*****************************************************************************************
+// File: auto_gen_fields.h
+//
+// Description: C++ Macros to simplify making user-defined struct types work in Connections
+//
+// Revision History:
+//       2.1.1 - Unspecified changes from Stuart Swan
+//             - Fix for CAT-35587 from Stuart Swan
+//*****************************************************************************************
 
 #pragma once
 
 #ifdef __clang__
 #ifdef BOOST_PP_VARIADICS
 #ifndef OK_BOOST_PASS
-#error "For clang++ auto_gen_fields.h must be included before any other includes of boost headers"
+#error "For clang++ auto_gen_port_info.h must be included before any other includes of boost headers"
 #endif
 #endif
 #define BOOST_PP_VARIADICS 1
@@ -52,18 +60,16 @@
 #include <mc_connections.h>
 #include <ctime>
 
+#include <auto_gen_fields.h>
+
 
 struct port_info {
  port_info(std::string t, int w, std::string n) : type(t), width(w), name(n) {}
- std::string type;
+ std::string type;  // "sc_in", "In", etc. "{}" means it is a module (similar to SV modport)
  int width{0};
  std::string name;
- std::vector<port_info> child_vec;
-};
-
-class gen_port_info_vec_if {
-public:
-  virtual void gen_port_info_vec(std::vector<port_info>& port_info_vec) = 0;
+ std::vector<port_info> child_vec;  // iff type is "{}" , then child_vec lists its ports
+ std::vector<field_info> field_vec; // fields iff this is a struct/class type
 };
 
 template <class T>
@@ -71,9 +77,44 @@ class port_traits
 {
 public:
   static void gen_info(std::vector<port_info>& vec, std::string nm, T& obj) {
-   port_info pi = port_info("{}", 0, nm);
+   port_info pi = port_info("{}", 0, nm); // this is like a SV modport
    obj.gen_port_info_vec(pi.child_vec);
    vec.push_back(pi);
+   // call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+  }
+};
+
+template <class T, int N>
+class port_traits<T[N]>
+{
+public:
+  static void gen_info(std::vector<port_info>& vec, std::string nm, T* obj) {
+   for (unsigned u=0; u < N; ++u) {
+     std::ostringstream os;
+     os << nm << "_" << u;
+     port_info pi = port_info("{}", 0, os.str()); // this is like a SV modport
+     obj->gen_port_info_vec(pi.child_vec);
+     vec.push_back(pi);
+     // call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+   }
+  }
+};
+
+template <class T, int X, int Y>
+class port_traits<T[X][Y]>
+{
+public:
+  static void gen_info(std::vector<port_info>& vec, std::string nm, T obj[X][Y]) {
+   for (unsigned x=0; x < X; ++x) {
+    for (unsigned y=0; y < Y; ++y) {
+     std::ostringstream os;
+     os << nm << "_" << x << "_" << y;
+     port_info pi = port_info("{}", 0, os.str()); // this is like a SV modport
+     (obj[0][0]).gen_port_info_vec(pi.child_vec);
+     vec.push_back(pi);
+     // call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+    }
+   }
   }
 };
 
@@ -85,6 +126,23 @@ public:
   static constexpr const char* type = "sc_in";
   static void gen_info(std::vector<port_info>& vec, std::string nm, sc_in<M>& obj) {
    vec.push_back(port_info(type, width, nm)); 
+   call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+  }
+};
+ 
+template <class M, int N>
+class port_traits<sc_in<M>[N]>
+{
+public:
+  static constexpr int width = Wrapped<M>::width;
+  static constexpr const char* type = "sc_in";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, sc_in<M>* obj) {
+   for (unsigned u=0; u < N; ++u) {
+     std::ostringstream os;
+     os << nm << "_" << u;
+     vec.push_back(port_info(type, width, os.str())); 
+     call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+   }
   }
 };
 
@@ -96,6 +154,23 @@ public:
   static constexpr const char* type = "sc_out";
   static void gen_info(std::vector<port_info>& vec, std::string nm, sc_out<M>& obj) {
    vec.push_back(port_info(type, width, nm)); 
+   call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+  }
+};
+ 
+template <class M, int N>
+class port_traits<sc_out<M>[N]>
+{
+public:
+  static constexpr int width = Wrapped<M>::width;
+  static constexpr const char* type = "sc_out";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, sc_out<M>* obj) {
+   for (unsigned u=0; u < N; ++u) {
+     std::ostringstream os;
+     os << nm << "_" << u;
+     vec.push_back(port_info(type, width, os.str())); 
+     call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+   }
   }
 };
 
@@ -107,6 +182,23 @@ public:
   static constexpr const char* type = "In";
   static void gen_info(std::vector<port_info>& vec, std::string nm, Connections::In<M>& obj) {
    vec.push_back(port_info(type, width, nm)); 
+   call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+  }
+};
+ 
+template <class M, int N>
+class port_traits<Connections::In<M>[N]>
+{
+public:
+  static constexpr int width = Wrapped<M>::width;
+  static constexpr const char* type = "In";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, Connections::In<M>* obj) {
+   for (unsigned u=0; u < N; ++u) {
+     std::ostringstream os;
+     os << nm << "_" << u;
+     vec.push_back(port_info(type, width, os.str())); 
+     call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+   }
   }
 };
 
@@ -118,28 +210,42 @@ public:
   static constexpr const char* type = "Out";
   static void gen_info(std::vector<port_info>& vec, std::string nm, Connections::Out<M>& obj) {
    vec.push_back(port_info(type, width, nm)); 
+   call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+  }
+};
+
+template <class M, int N>
+class port_traits<Connections::Out<M>[N]>
+{
+public:
+  static constexpr int width = Wrapped<M>::width;
+  static constexpr const char* type = "Out";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, Connections::Out<M>* obj) {
+   for (unsigned u=0; u < N; ++u) {
+     std::ostringstream os;
+     os << nm << "_" << u;
+     vec.push_back(port_info(type, width, os.str())); 
+     call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+   }
   }
 };
 
 
 
 #define GEN_PORT_INFO(R, _, F) \
-   port_traits<decltype(F)>::gen_info(port_info_vec, #F, this->F); \
+   port_traits<decltype(F)>::gen_info(port_info_vec, #F, F); \
   //
 
-#ifndef __SYNTHESIS__
+#ifdef CCS_SYSC
+#define GEN_PORT_INFO_VEC(FIELDS) // nothing
+#else
 #define GEN_PORT_INFO_VEC(FIELDS) \
   virtual void gen_port_info_vec(std::vector<port_info>& port_info_vec) { \
     BOOST_PP_LIST_FOR_EACH(GEN_PORT_INFO, _, FIELDS) \
   }; \
   //
-#else
-#define GEN_PORT_INFO_VEC(FIELDS) \
-  virtual void gen_port_info_vec(std::vector<port_info>& port_info_vec) { \
-  }; \
-  //
-#endif
 
+#endif
 
 
 #define PORT_LIST(X) BOOST_PP_TUPLE_TO_LIST(BOOST_PP_TUPLE_SIZE(X), X )
@@ -151,6 +257,305 @@ public:
 
 
 
+class auto_gen_split_wrap {
+public:
+  auto_gen_split_wrap (std::string nm) : module_name(nm) {}
+
+  std::vector<port_info> port_info_vec;
+  std::string module_name;
+
+  void emit_field_vec(ostream& os, std::vector<field_info>& v) {
+    if (v.size()) {
+     os << "{\n";
+       for (unsigned z=0; z< v.size(); ++z)
+         v[z].stream_indent(os, " ");
+     os << "}\n";
+    }
+  }
+
+  void emit(ostream& os) {
+   for (unsigned i=0; i<port_info_vec.size(); ++i) {
+    os << "port: " << port_info_vec[i].type 
+              << " " << port_info_vec[i].width << " " << port_info_vec[i].name << "\n";
+    emit_field_vec(std::cout, port_info_vec[i].field_vec);
+   }
+  }
+
+  std::string vlog_size(int s) {
+    std::ostringstream os;
+    os << " [" << s-1 << ":0] ";
+
+    if (s == 1)
+      return("  ");
+
+    return os.str();
+  }
+
+  void emit_split_ports_fields(ostream& os, 
+          std::string prefix, std::vector<field_info>& v, std::string io) {
+    for (unsigned i=0; i<v.size(); ++i)
+      if (!v[i].fields.size()) {
+        if ((v[i].dim1 == 0) && (v[i].dim0 == 0))
+          os << io << vlog_size(v[i].width) << prefix + "_" << v[i].name << ";\n";
+        else if (v[i].dim1 == 0) {
+          for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0)
+            os << io << vlog_size(v[i].width) << prefix + "_" << v[i].name << "_" << dim0 << ";\n";
+        } else {
+          for (unsigned dim1=0; dim1 < v[i].dim1; ++dim1)
+            for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0)
+              os << io << vlog_size(v[i].width) << prefix + "_" << v[i].name << "_" << dim1 << "_" << dim0 << ";\n";
+        }
+      }
+      else {
+        if ((v[i].dim1 == 0) && (v[i].dim0 == 0))
+          emit_split_ports_fields(os, prefix + "_" + v[i].name, v[i].fields, io);
+        else if (v[i].dim1 == 0) {
+          for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0)
+            emit_split_ports_fields(os, prefix + "_" + v[i].name + "_" + std::to_string(dim0), v[i].fields, io);
+ 
+        } else {
+          for (unsigned dim1=0; dim1 < v[i].dim1; ++dim1)
+            for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0)
+            emit_split_ports_fields(os, prefix + "_" + v[i].name + "_" + std::to_string(dim1) + "_" + std::to_string(dim0), v[i].fields, io);
+        }
+      }
+  }
+
+  void emit_split_ports(ostream& os, std::vector<port_info>& pi_vec, std::string prefix = "") {
+   for (unsigned i=0; i<pi_vec.size(); ++i) {
+    std::string io = "input ";
+    if (pi_vec[i].type == "sc_out")
+      io = "output ";
+    if (pi_vec[i].type == "Out")
+      io = "output ";
+
+    if (pi_vec[i].type == "In") {
+      os << "output  " << prefix << pi_vec[i].name << "_" << _RDYNAMESTR_ << ";\n";
+      os << "input   " << prefix << pi_vec[i].name << "_" << _VLDNAMESTR_ << ";\n";
+    }
+
+    if (pi_vec[i].type == "Out") {
+      os << "input   " << prefix << pi_vec[i].name << "_" << _RDYNAMESTR_ << ";\n";
+      os << "output  " << prefix << pi_vec[i].name << "_" << _VLDNAMESTR_ << ";\n";
+    }
+
+    if (pi_vec[i].type == "{}") {
+      emit_split_ports(os, pi_vec[i].child_vec, prefix + pi_vec[i].name + "_");
+      continue;
+    }
+
+    if (!pi_vec[i].field_vec.size()) {
+      os << io << vlog_size(pi_vec[i].width) << prefix << pi_vec[i].name ;
+      if ((pi_vec[i].type == "In") || (pi_vec[i].type == "Out"))
+        os << "_" << _DATNAMESTR_;
+      os << ";\n";
+    } else {
+      emit_split_ports_fields(os, prefix + pi_vec[i].name, pi_vec[i].field_vec, io);
+    }
+   }
+  }
+
+
+  void emit_split_ports_fields_bare(ostream& os, 
+          std::string prefix, std::vector<field_info>& v, std::string& comma) {
+    for (unsigned i=0; i<v.size(); ++i)
+      if (!v[i].fields.size()) {
+        if ((v[i].dim1 == 0) && (v[i].dim0 == 0)) {
+          os << comma << prefix + "_" << v[i].name << "\n";
+          comma = ", ";
+        } else if (v[i].dim1 == 0) {
+          for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0) {
+            os << comma << prefix + "_" << v[i].name << "_" << dim0 << "\n";
+            comma = ", ";
+          }
+        } else {
+          for (unsigned dim1=0; dim1 < v[i].dim1; ++dim1)
+            for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0) {
+              os << comma << prefix + "_" << v[i].name << "_" << dim1 << "_" << dim0 << "\n";
+              comma = ", ";
+            }
+        }
+      }
+      else {
+        if ((v[i].dim1 == 0) && (v[i].dim0 == 0)) {
+         emit_split_ports_fields_bare(os, prefix + "_" + v[i].name, v[i].fields, comma);
+        } else if (v[i].dim1 == 0) {
+          for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0) {
+            emit_split_ports_fields_bare(os, prefix + "_" + v[i].name + "_" + std::to_string(dim0),
+              v[i].fields, comma);
+          }
+        } else {
+          for (unsigned dim1=0; dim1 < v[i].dim1; ++dim1)
+            for (unsigned dim0=0; dim0 < v[i].dim0; ++dim0) {
+             emit_split_ports_fields_bare(os, prefix + "_" + v[i].name + "_" + 
+               std::to_string(dim1) + "_" + std::to_string(dim0), v[i].fields, comma);
+            }
+        }
+      }
+  }
+
+  void emit_split_ports_bare(ostream& os, std::string& comma, 
+                      std::vector<port_info>& pi_vec, std::string prefix="") {
+   for (unsigned i=0; i<pi_vec.size(); ++i) {
+    if (pi_vec[i].type == "In") {
+      os << comma << prefix << pi_vec[i].name << "_" << _RDYNAMESTR_ << "\n";
+      comma = ", ";
+      os << comma << prefix << pi_vec[i].name << "_" << _VLDNAMESTR_ << "\n";
+    }
+
+    if (pi_vec[i].type == "Out") {
+      os << comma << prefix << pi_vec[i].name << "_" << _RDYNAMESTR_ << "\n";
+      comma = ", ";
+      os << comma << prefix << pi_vec[i].name << "_" << _VLDNAMESTR_ << "\n";
+    }
+
+    if (pi_vec[i].type == "{}") {
+      emit_split_ports_bare(os, comma, pi_vec[i].child_vec, prefix + pi_vec[i].name + "_");
+      continue;
+    }
+
+    if (!pi_vec[i].field_vec.size()) {
+      os << comma << prefix << pi_vec[i].name;
+      if ((pi_vec[i].type == "In") || (pi_vec[i].type == "Out"))
+        os << "_" << _DATNAMESTR_;
+      os << "\n";
+      comma = ", ";
+    }
+    else {
+      emit_split_ports_fields_bare(os, prefix + pi_vec[i].name, pi_vec[i].field_vec, comma);
+    }
+   }
+  }
+
+  void emit_bindings_fields(ostream& os, 
+          std::string prefix, std::vector<field_info>& v, std::string& comma) {
+    for (int i=v.size() - 1; i >= 0; --i) {   // descending order to get bit order correct
+      if (!v[i].fields.size()) {
+        if ((v[i].dim1 == 0) && (v[i].dim0 == 0)) {
+          os << comma << prefix + "_" << v[i].name << "\n";
+          comma = ", ";
+        } else if (v[i].dim1 == 0) {
+          for (int dim0=v[i].dim0 - 1; dim0 >= 0; --dim0) {  // descending order ..
+            os << comma << prefix + "_" << v[i].name << "_" << dim0 << "\n";
+            comma = ", ";
+          }
+        } else {
+          for (int dim1=v[i].dim1 - 1; dim1 >= 0; --dim1)  // descending order ..
+            for (int dim0=v[i].dim0 - 1; dim0 >= 0; --dim0) {
+              os << comma << prefix + "_" << v[i].name << "_" << dim1 << "_" << dim0 << "\n";
+              comma = ", ";
+            }
+        }
+      }
+      else {
+        if ((v[i].dim1 == 0) && (v[i].dim0 == 0)) {
+          emit_bindings_fields(os, prefix + "_" + v[i].name, v[i].fields, comma);
+        } else if (v[i].dim1 == 0) {
+          for (int dim0=v[i].dim0 - 1; dim0 >= 0; --dim0) {  // descending order ..
+            emit_bindings_fields(os, prefix + "_" + v[i].name + "_" + std::to_string(dim0),
+               v[i].fields, comma);
+          }
+        } else {
+          for (int dim1=v[i].dim1 - 1; dim1 >= 0; --dim1)  // descending order ..
+            for (int dim0=v[i].dim0 - 1; dim0 >= 0; --dim0) {
+            emit_bindings_fields(os, prefix + "_" + v[i].name + "_" + std::to_string(dim1) +
+               "_" + std::to_string(dim0), v[i].fields, comma);
+            }
+        }
+      }
+    }
+  }
+
+  void emit_bindings(ostream& os, std::string& comma, std::vector<port_info>& pi_vec, std::string prefix="") {
+   for (unsigned i=0; i<pi_vec.size(); ++i) {
+    if (pi_vec[i].type == "In") {
+      std::stringstream ss;
+      ss << prefix << pi_vec[i].name << "_" << _RDYNAMESTR_;
+      os << comma << "." << ss.str() << "(" << ss.str() << ")\n";
+      comma = ", ";
+      ss.str("");
+      ss << prefix << pi_vec[i].name << "_" << _VLDNAMESTR_;
+      os << comma << "." << ss.str() << "(" << ss.str() << ")\n";
+    }
+
+    if (pi_vec[i].type == "Out") {
+      std::stringstream ss;
+      ss << prefix << pi_vec[i].name << "_" << _RDYNAMESTR_;
+      os << comma << "." << ss.str() << "(" << ss.str() << ")\n";
+      comma = ", ";
+      ss.str("");
+      ss << prefix << pi_vec[i].name << "_" << _VLDNAMESTR_;
+      os << comma << "." << ss.str() << "(" << ss.str() << ")\n";
+    }
+
+    if (pi_vec[i].type == "{}") {
+      emit_bindings(os, comma, pi_vec[i].child_vec, prefix + pi_vec[i].name + "_");
+      continue;
+    }
+
+    if (!pi_vec[i].field_vec.size()) {
+      std::stringstream ss;
+      ss << prefix << pi_vec[i].name ;
+      if ((pi_vec[i].type == "In") || (pi_vec[i].type == "Out"))
+        ss << "_" << _DATNAMESTR_;
+      os << comma << "." << ss.str() << "(" << ss.str() << ")\n";
+      comma = ", ";
+    }
+    else {
+      std::string postfix = "";
+      if ((pi_vec[i].type == "In") || (pi_vec[i].type == "Out"))
+        postfix = std::string("_") + _DATNAMESTR_;
+      os << comma << "." << prefix << pi_vec[i].name << postfix << "({\n";
+      comma = ", ";
+      std::string concat_comma = "  ";
+      emit_bindings_fields(os, prefix + pi_vec[i].name, pi_vec[i].field_vec, concat_comma);
+      os << "})\n";
+    }
+   }
+  }
+
+  void gen_wrapper() {
+    time_t now = time(0);
+    char* dt = ctime(&now);
+    remove_base();
+    ofstream vlog;
+    vlog.open(module_name + "_split_wrap.v");
+    std::cout << "Generating " << module_name << "_split_wrap.v" << "\n";
+
+    vlog << "// Auto generated on: " << dt << "\n";
+    vlog << "// This wraps the Verilog RTL produced by HLS and splits all the ports and fields\n";
+    vlog << "// into individual input and output ports in Verilog\n\n";
+    vlog << "module " << module_name << "_wrap(\n";
+    std::string comma = "  ";
+    emit_split_ports_bare(vlog, comma, port_info_vec);
+    vlog << ");\n\n" ;
+    emit_split_ports(vlog, port_info_vec);
+    vlog << "\n" ;
+    vlog << module_name << " " << module_name << "_inst (\n";
+    comma = "  ";
+    emit_bindings(vlog, comma, port_info_vec);
+    vlog << ");\n\n";
+    vlog << "endmodule\n" ;
+    vlog.close();
+  }
+
+  void remove_base() {
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+     if (port_info_vec[i].type == std::string("{}")) {
+      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) 
+       port_info_vec[i].child_vec[c].name = strip_base(port_info_vec[i].child_vec[c].name);
+     }
+    }
+  }
+
+  std::string strip_base(std::string& input) {
+    size_t pos = input.find("::");
+    if (pos != std::string::npos)
+      return input.substr(pos + 2);
+    return input;
+  }
+};
+
 class auto_gen_wrapper {
 public:
   auto_gen_wrapper(std::string nm) : module_name(nm) {}
@@ -158,7 +563,7 @@ public:
   std::vector<port_info> port_info_vec;
   std::string module_name;
 
-  void display() {
+  void emit() {
    for (unsigned i=0; i<port_info_vec.size(); ++i) {
     std::cout << "port: " << port_info_vec[i].type 
               << " " << port_info_vec[i].width << " " << port_info_vec[i].name << "\n";
@@ -175,8 +580,10 @@ public:
     remove_base();
     ofstream sc_cpp;
     sc_cpp.open(module_name + "_wrap.cpp");
+    std::cout << "Generating " << module_name << "_wrap.cpp" << "\n";
 
     sc_cpp << "// Auto generated on: " << dt << "\n";
+    sc_cpp << "// This file uses SC_MODULE_EXPORT to export a SC wrapper to HDL simulators\n\n";
     sc_cpp << "#include \"" << module_name + "_wrap.h" << "\"" << "\n" ;
     if (enable_trace)
       sc_cpp << "sc_trace_file* trace_file_ptr;\n";
@@ -190,7 +597,9 @@ public:
 
     ofstream sc_h;
     sc_h.open(module_name + "_wrap.h");
+    std::cout << "Generating " << module_name << "_wrap.h" << "\n";
     sc_h << "// Auto generated on: " << dt << "\n";
+    sc_h << "// This file is an SC wrapper of the pre-HLS model to an HDL simulator\n\n";
     sc_h << "#include \"" << module_name + ".h" << "\"" << "\n\n" ;
     if (enable_trace)
       sc_h << "extern sc_trace_file* trace_file_ptr;\n\n";
@@ -246,10 +655,13 @@ public:
 
     ofstream vlog;
     vlog.open(module_name + "_wrap.v");
+    std::cout << "Generating " << module_name << "_wrap.v" << "\n";
 
     std::string prefix("  ");
 
     vlog << "// Auto generated on: " << dt << "\n\n";
+    vlog << "// This file shows the Verilog input/output declarations for the exported wrapped SC model.\n";
+    vlog << "// This file is only for documentation purposes.\n\n";
     vlog << "module " << module_name << "(\n";
     for (unsigned i=0; i<port_info_vec.size(); ++i) {
      if (port_info_vec[i].type != std::string("{}")) {
