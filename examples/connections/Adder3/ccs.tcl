@@ -23,7 +23,7 @@ solution file add "$sfd/Adder3.h" -type CHEADER
 solution file add "$sfd/testbench.cpp" -type C++ -exclude true
 
 go analyze
-directive set -DESIGN_HIERARCHY Adder3
+solution design set Adder3 -top
 
 go compile
 solution library add nangate-45nm_beh -- -rtlsyntool DesignCompiler -vendor Nangate -technology 045nm
