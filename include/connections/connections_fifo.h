@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 2.1                                                 *
+ *  Software Version: 2.2                                                 *
  *                                                                        *
- *  Release Date    : Mon Jan 15 20:15:38 PST 2024                        *
+ *  Release Date    : Thu Aug 22 21:10:31 PDT 2024                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 2.1.1                                               *
+ *  Release Build   : 2.2.0                                               *
  *                                                                        *
  *  Copyright 2020 Siemens                                                *
  *                                                                        *
@@ -35,6 +35,7 @@
 //   Configurable port names: (rdy/vld/dat) legacy: (rdy/val/msg)
 //
 // Revision History:
+//   2.2.0 - 2024-08-08 - Fixed CAT-37536 - Added Fifo_with_idle
 //   2.1.0 - 2023-10-16 - Fixed CAT-34870 - Include iomanip for setw
 //   2.1.0 - 2023-10-16 - Add reset polarity check in line_trace()
 //   2.1.0 - 2023-10-13 - Fixed CAT-34421
@@ -386,6 +387,39 @@ namespace Connections
 
   };
 #endif // CONNECTIONS_SIM_ONLY
+
+template <typename Message, unsigned int NumEntries, Connections::connections_port_t port_marshall_type = AUTO_PORT>
+struct Fifo_with_idle : public Connections::Fifo<Message,  NumEntries, port_marshall_type> {
+  SC_HAS_PROCESS(Fifo_with_idle);
+  using Base = Connections::Fifo<Message,  NumEntries, port_marshall_type>;
+  using Base::enq;
+  using Base::deq;
+  using Base::sensitive;
+  
+  sc_out<bool> is_idle;
+
+  Fifo_with_idle() :
+      Base("Fifo_with_idle"),
+      is_idle("is_idle")
+  {
+    SC_METHOD(gen_idle);
+    sensitive << enq.rdy << enq.vld << deq.vld << deq.rdy;
+  }
+
+  Fifo_with_idle(const sc_module_name &name) :
+      Base(name),
+      is_idle(CONNECTIONS_CONCAT(name,"is_idle"))
+  {
+    SC_METHOD(gen_idle);
+    sensitive << enq.rdy << enq.vld << deq.vld << deq.rdy;
+  }
+
+  void gen_idle() {
+    is_idle = !((enq.rdy && enq.vld) || (deq.vld && deq.rdy));
+  }
+
+};
+
 
 }  // namespace Connections
 #endif  // CONNECTIONS_FIFO_H
