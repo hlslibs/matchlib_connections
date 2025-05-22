@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 2.2                                                 *
+ *  Software Version: 2.3                                                 *
  *                                                                        *
- *  Release Date    : Thu Aug 22 21:10:31 PDT 2024                        *
+ *  Release Date    : Tue May 13 15:55:46 PDT 2025                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 2.2.0                                               *
+ *  Release Build   : 2.3.0                                               *
  *                                                                        *
  *  Copyright 2023 Siemens                                                *
  *                                                                        *
@@ -30,7 +30,6 @@
  *************************************************************************/
 
 // Author: Stuart Swan, Platform Architect, Siemens EDA
-// Date: 22 Dec 2023
 
 //*****************************************************************************************
 // File: auto_gen_fields.h
@@ -38,6 +37,8 @@
 // Description: C++ Macros to simplify making user-defined struct types work in Connections
 //
 // Revision History:
+//       2.2.2 - Fix CAT-39602 - Changes from Stuart Swan
+//       2.2.1 - Fix CAT-38256 - Clean up compiler warnings about extra semicolons
 //       2.1.1 - Unspecified changes from Stuart Swan
 //             - Fix for CAT-35587 from Stuart Swan
 //*****************************************************************************************
@@ -64,10 +65,13 @@
 
 
 struct port_info {
- port_info(std::string t, int w, std::string n) : type(t), width(w), name(n) {}
+ port_info(std::string t, int w, std::string n, bool i=0, bool o=0) 
+  : type(t), width(w), name(n), is_sc_in_bool(i), is_sc_out_bool(o) {}
  std::string type;  // "sc_in", "In", etc. "{}" means it is a module (similar to SV modport)
  int width{0};
  std::string name;
+ bool is_sc_in_bool{0}; // true iff is sc_in<bool>
+ bool is_sc_out_bool{0}; // true iff is sc_out<bool>
  std::vector<port_info> child_vec;  // iff type is "{}" , then child_vec lists its ports
  std::vector<field_info> field_vec; // fields iff this is a struct/class type
 };
@@ -129,6 +133,18 @@ public:
    call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
   }
 };
+
+template <>
+class port_traits<sc_in<bool>>
+{
+public:
+  static constexpr int width = Wrapped<bool>::width;
+  static constexpr const char* type = "sc_in";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, sc_in<bool>& obj) {
+   vec.push_back(port_info(type, width, nm, 1)); 
+   call_gen_field_info<bool>::gen_field_info(vec.back().field_vec);
+  }
+};
  
 template <class M, int N>
 class port_traits<sc_in<M>[N]>
@@ -155,6 +171,18 @@ public:
   static void gen_info(std::vector<port_info>& vec, std::string nm, sc_out<M>& obj) {
    vec.push_back(port_info(type, width, nm)); 
    call_gen_field_info<M>::gen_field_info(vec.back().field_vec);
+  }
+};
+
+template <>
+class port_traits<sc_out<bool>>
+{
+public:
+  static constexpr int width = Wrapped<bool>::width;
+  static constexpr const char* type = "sc_out";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, sc_out<bool>& obj) {
+   vec.push_back(port_info(type, width, nm, 0, 1)); 
+   call_gen_field_info<bool>::gen_field_info(vec.back().field_vec);
   }
 };
  
@@ -231,6 +259,28 @@ public:
 };
 
 
+template <>
+class port_traits<Connections::SyncIn>
+{
+public:
+  static constexpr int width = 0;
+  static constexpr const char* type = "In";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, Connections::SyncIn& obj) {
+   vec.push_back(port_info(type, width, nm)); 
+  }
+};
+
+template <>
+class port_traits<Connections::SyncOut>
+{
+public:
+  static constexpr int width = 0;
+  static constexpr const char* type = "Out";
+  static void gen_info(std::vector<port_info>& vec, std::string nm, Connections::SyncOut& obj) {
+   vec.push_back(port_info(type, width, nm)); 
+  }
+};
+
 
 #define GEN_PORT_INFO(R, _, F) \
    port_traits<decltype(F)>::gen_info(port_info_vec, #F, F); \
@@ -242,7 +292,7 @@ public:
 #define GEN_PORT_INFO_VEC(FIELDS) \
   virtual void gen_port_info_vec(std::vector<port_info>& port_info_vec) { \
     BOOST_PP_LIST_FOR_EACH(GEN_PORT_INFO, _, FIELDS) \
-  }; \
+  } \
   //
 
 #endif
@@ -554,6 +604,7 @@ public:
       return input.substr(pos + 2);
     return input;
   }
+
 };
 
 class auto_gen_wrapper {
@@ -562,6 +613,17 @@ public:
 
   std::vector<port_info> port_info_vec;
   std::string module_name;
+  struct port_name {
+     std::string dotted_name;
+     std::string flat_name;
+     std::string io;
+     std::string type_info_name;
+     std::string sig_name;
+     bool is_sc_in_bool{0};
+     bool is_sc_out_bool{0};
+     int width{0};
+  };
+  std::vector<port_name> port_name_vec;
 
   void emit() {
    for (unsigned i=0; i<port_info_vec.size(); ++i) {
@@ -574,10 +636,11 @@ public:
    }
   }
 
-  void gen_wrappers(int clkper=10, bool enable_trace=true) {
+  void gen_wrappers(double clkper=10, bool enable_trace=true, double clk_offset=0) {
     time_t now = time(0);
     char* dt = ctime(&now);
     remove_base();
+    port_name_vec.clear();
     ofstream sc_cpp;
     sc_cpp.open(module_name + "_wrap.cpp");
     std::cout << "Generating " << module_name << "_wrap.cpp" << "\n";
@@ -604,18 +667,73 @@ public:
     if (enable_trace)
       sc_h << "extern sc_trace_file* trace_file_ptr;\n\n";
     sc_h << "class " << module_name + "_wrap" << " : public sc_module {\n";
+    sc_h << "  #include \"" << "mc_toolkit_utils.h" << "\"" << "\n" ;
     sc_h << "public:\n";
     sc_h << "  " << module_name << " CCS_INIT_S1(" << inst << ");\n\n";
+    sc_h << "  template <class T> struct type_info { };\n\n";
+    sc_h << "  template <class T> struct type_info<sc_in<T>> {\n";
+    sc_h << "    typedef T data_type;\n";
+    sc_h << "    static const int width = Wrapped<data_type>::width;\n";
+    sc_h << "    typedef sc_lv<width> sc_lv_type;\n";
+    sc_h << "    static const bool is_sc_out = 0;\n";
+    sc_h << "  };\n\n";
+    sc_h << "  template <class T> struct type_info<sc_out<T>> {\n";
+    sc_h << "    typedef T data_type;\n";
+    sc_h << "    static const int width = Wrapped<data_type>::width;\n";
+    sc_h << "    typedef sc_lv<width> sc_lv_type;\n";
+    sc_h << "    static const bool is_sc_out = 1;\n";
+    sc_h << "  };\n\n";
+
     for (unsigned i=0; i<port_info_vec.size(); ++i) {
      if (port_info_vec[i].type != std::string("{}")) {
-      emit_io(sc_h, module_name  + "_inst." + port_info_vec[i].name, port_info_vec[i].name,
-              port_info_vec[i].type);
+      gen_name(port_name_vec, module_name  + "_inst." + port_info_vec[i].name, port_info_vec[i].name,
+              port_info_vec[i].type, port_info_vec[i].width);
+      if (port_info_vec[i].is_sc_in_bool)
+        port_name_vec.back().is_sc_in_bool = 1;
+      if (port_info_vec[i].is_sc_out_bool)
+        port_name_vec.back().is_sc_out_bool = 1;
      } else {
       for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
-        emit_io(sc_h, child_type(i,c, "_inst.") , child_name(i,c) , port_info_vec[i].child_vec[c].type);
+        gen_name(port_name_vec, 
+          child_type(i,c, "_inst.") , child_name(i,c) , port_info_vec[i].child_vec[c].type,
+          port_info_vec[i].child_vec[c].width);
+        if (port_info_vec[i].child_vec[c].is_sc_in_bool)
+          port_name_vec.back().is_sc_in_bool = 1;
+        if (port_info_vec[i].child_vec[c].is_sc_out_bool)
+          port_name_vec.back().is_sc_out_bool = 1;
       }
      }
     }
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+      port_name& n = port_name_vec[i];
+      n.type_info_name = std::string("type_info_") + n.flat_name;
+      n.sig_name = std::string("sig_") + n.flat_name;
+      sc_h << "  typedef type_info<decltype(" << n.dotted_name << ")> " << n.type_info_name << ";\n";
+    }
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (n.is_sc_in_bool)
+      sc_h << "  sc_in<bool> CCS_INIT_S1(" << n.flat_name << ");\n";
+     else if (n.is_sc_out_bool)
+      sc_h << "  sc_out<bool> CCS_INIT_S1(" << n.flat_name << ");\n";
+     else
+      sc_h << "  " << n.io << "<sc_lv<" << n.type_info_name << "::width>> CCS_INIT_S1(" 
+	<< n.flat_name << ");\n";
+
+    }
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool)
+      sc_h << "  sc_signal<" << n.type_info_name << "::data_type> CCS_INIT_S1(" << n.sig_name << ");\n";
+    }
+
     sc_h << "\n  sc_clock connections_clk;\n";
     sc_h << "  sc_event check_event;\n\n";
     sc_h << "  virtual void start_of_simulation() {\n";
@@ -623,7 +741,7 @@ public:
     sc_h << "      connections_clk.posedge_event(), clk.posedge_event());\n";
     sc_h << "  }\n\n";
     sc_h << "  SC_CTOR(" << module_name << "_wrap) \n";
-    sc_h << "  : connections_clk(\"connections_clk\", " << clkper << ", SC_NS, 0.5,0,SC_NS,true)\n";
+    sc_h << "  : connections_clk(\"connections_clk\", " << clkper << ", SC_NS, 0.5, " << clk_offset << ",SC_NS,true)\n";
     sc_h << "  {\n";
     sc_h << "    SC_METHOD(check_clock);\n";
     sc_h << "    sensitive << connections_clk << clk;\n\n";
@@ -633,16 +751,29 @@ public:
       sc_h << "    trace_file_ptr = sc_create_vcd_trace_file(\"trace\");\n";
       sc_h << "    trace_hierarchy(this, trace_file_ptr);\n\n";
     }
-    for (unsigned i=0; i<port_info_vec.size(); ++i) {
-     if (port_info_vec[i].type != std::string("{}")) {
-      emit_bind(sc_h, module_name  + "_inst." + port_info_vec[i].name, port_info_vec[i].name,
-              port_info_vec[i].type);
-     } else {
-      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
-        emit_bind(sc_h, child_type(i,c, "_inst.") , child_name(i,c) , port_info_vec[i].child_vec[c].type);
+
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool) {
+      if (n.io == "sc_out") {
+        sc_h << "    SC_METHOD(method_" << n.flat_name << "); sensitive << " << n.sig_name << ";\n";
+      } else {
+        sc_h << "    SC_METHOD(method_" << n.flat_name << "); sensitive << " << n.flat_name << "; dont_initialize();\n";
       }
      }
     }
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (n.is_sc_in_bool || n.is_sc_out_bool)
+      sc_h << "    " << n.dotted_name << "(" << n.flat_name << ");\n";
+     else
+      sc_h << "    " << n.dotted_name << "(" << n.sig_name << ");\n";
+    }
+
     sc_h << "  }\n\n";
     sc_h << "  void check_clock() { check_event.notify(2, SC_PS);} // Let SC and Vlog delta cycles settle.\n\n";
 
@@ -650,6 +781,29 @@ public:
     sc_h << "    if (connections_clk.read() == clk.read()) return;\n";
     sc_h << "    CCS_LOG(\"clocks misaligned!:\"  << connections_clk.read() << \" \" << clk.read());\n";
     sc_h << "  }\n";
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool) {
+      sc_h << "  void method_" << n.flat_name << "(){\n";
+      sc_h << "    typename " << n.type_info_name << "::data_type obj;\n";
+      sc_h << "    typename " << n.type_info_name << "::sc_lv_type lv;\n";
+      if (n.io == "sc_in") {
+        sc_h << "    lv = " << n.flat_name << ".read();\n";
+        sc_h << "    obj = BitsToType<decltype(obj)>(lv);\n";
+        sc_h << "    " << n.sig_name << " = obj;\n";
+      } else {
+        sc_h << "    obj = " << n.sig_name << ".read();\n";
+        sc_h << "    lv = TypeToBits(obj);\n";
+        sc_h << "    " << n.flat_name << " = lv;\n";
+      }
+      sc_h << "  }\n";
+     }
+    }
+
+    sc_h << "\n";
     sc_h << "};\n";
     sc_h.close();
 
@@ -665,10 +819,10 @@ public:
     vlog << "module " << module_name << "(\n";
     for (unsigned i=0; i<port_info_vec.size(); ++i) {
      if (port_info_vec[i].type != std::string("{}")) {
-      emit_vlog_name(vlog, prefix, port_info_vec[i].name, port_info_vec[i].type);
+      emit_vlog_name(vlog, prefix, port_info_vec[i].name, port_info_vec[i]);
      } else {
       for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
-           emit_vlog_name(vlog, prefix, child_name(i,c), port_info_vec[i].child_vec[c].type);
+           emit_vlog_name(vlog, prefix, child_name(i,c), port_info_vec[i].child_vec[c]);
       }
      }
     }
@@ -684,19 +838,67 @@ public:
     }
     vlog << "endmodule;\n";
     vlog.close();
+
+    prefix = "  ";
+
+    vlog.open(module_name + "_wrap.sv");
+    std::cout << "Generating " << module_name << "_wrap.sv" << "\n";
+
+    vlog << "// Auto generated on: " << dt << "\n\n";
+    vlog << "// This file shows the SystemVerilog input/output declarations for the exported wrapped SC model.\n";
+    vlog << "// This file is only for documentation purposes.\n\n";
+
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+     if (port_info_vec[i].type != std::string("{}")) {
+      emit_systemvlog_type_decl(vlog, port_info_vec[i].name, port_info_vec[i]);
+     } else {
+      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
+        emit_systemvlog_type_decl(vlog, child_name(i,c), port_info_vec[i].child_vec[c]);
+      }
+     }
+    }
+    
+    vlog << "\n";
+
+    vlog << "module " << module_name << "(\n";
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+     if (port_info_vec[i].type != std::string("{}")) {
+      emit_vlog_name(vlog, prefix, port_info_vec[i].name, port_info_vec[i]);
+     } else {
+      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
+           emit_vlog_name(vlog, prefix, child_name(i,c), port_info_vec[i].child_vec[c]);
+      }
+     }
+    }
+    vlog << ");\n";
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+     if (port_info_vec[i].type != std::string("{}")) {
+      emit_systemvlog_decl(vlog, port_info_vec[i].name, port_info_vec[i]);
+     } else {
+      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
+        emit_systemvlog_decl(vlog, child_name(i,c), port_info_vec[i].child_vec[c]);
+      }
+     }
+    }
+    vlog << "endmodule;\n";
+    vlog.close();
+
   }
 
 
-  void emit_vlog_name(ofstream& vlog, std::string& prefix, std::string name, std::string& io_type) {
+  void emit_vlog_name(ofstream& vlog, std::string& prefix, std::string name, port_info& pi) {
+    std::string io_type = pi.type;
     if (io_type == "In") {
       vlog << prefix << name << "_" << _RDYNAMESTR_ << "\n";
       prefix = ", ";
       vlog << prefix << name << "_" << _VLDNAMESTR_ << "\n";
+      if (pi.width)
       vlog << prefix << name << "_" << _DATNAMESTR_ << "\n";
     } else if (io_type == "Out") {
       vlog << prefix << name << "_" << _RDYNAMESTR_ << "\n";
       prefix = ", ";
       vlog << prefix << name << "_" << _VLDNAMESTR_ << "\n";
+      if (pi.width)
       vlog << prefix << name << "_" << _DATNAMESTR_ << "\n";
     } else {
       vlog << prefix << name << "\n";
@@ -709,15 +911,83 @@ public:
     if (pi.type == "In") {
       vlog << "  output " << name << "_" << _RDYNAMESTR_ << ";\n";
       vlog << "  input  " << name << "_" << _VLDNAMESTR_ << ";\n";
+      if (pi.width)
       vlog << "  input [" << w << ":0] " << name << "_" << _DATNAMESTR_ << ";\n";
     } else if (pi.type == "Out") {
       vlog << "  input  " << name << "_" << _RDYNAMESTR_ << ";\n";
       vlog << "  output " << name << "_" << _VLDNAMESTR_ << ";\n";
+      if (pi.width)
       vlog << "  output [" << w << ":0] " << name << "_" << _DATNAMESTR_ << ";\n";
     } else if (pi.type == "sc_in") {
       vlog << "  input [" << w << ":0] " << name << ";\n";
     } else if (pi.type == "sc_out") {
       vlog << "  output [" << w << ":0] " << name << ";\n";
+    }
+  }
+
+  void emit_systemvlog_decl(ofstream& vlog, std::string name, port_info& pi) {
+    int w = pi.width - 1;
+    std::string type_str = std::string("[") + std::to_string(w) + ":0] ";
+
+    if (pi.field_vec.size()) {
+      type_str = name; 
+      if ((pi.type == "In") || (pi.type == "Out")) 
+        type_str += std::string("_") + _DATNAMESTR_;
+      type_str += "_type ";
+    }
+
+    if (pi.type == "In") {
+      vlog << "  output " << name << "_" << _RDYNAMESTR_ << ";\n";
+      vlog << "  input  " << name << "_" << _VLDNAMESTR_ << ";\n";
+      if (pi.width)
+      vlog << "  input  " << type_str << name << "_" << _DATNAMESTR_ << ";\n";
+    } else if (pi.type == "Out") {
+      vlog << "  input  " << name << "_" << _RDYNAMESTR_ << ";\n";
+      vlog << "  output " << name << "_" << _VLDNAMESTR_ << ";\n";
+      if (pi.width)
+      vlog << "  output " << type_str << name << "_" << _DATNAMESTR_ << ";\n";
+    } else if (pi.type == "sc_in") {
+      vlog << "  input " << type_str << name << ";\n";
+    } else if (pi.type == "sc_out") {
+      vlog << "  output " << type_str << name << ";\n";
+    }
+  }
+
+  void emit_sv_type_decl_helper(field_info& fi, ostream &os, std::string indent, std::string nm) { 
+    std::string dims = "";
+    int dims_mult = 1;
+    if (fi.dim1) {
+      dims += std::string("[") + std::to_string(fi.dim1-1) + ":0] ";
+      dims_mult *= fi.dim1;
+    }
+    if (fi.dim0) {
+      dims += std::string("[") + std::to_string(fi.dim0-1) + ":0] ";
+      dims_mult *= fi.dim0;
+    }
+
+    if (fi.fields.size()) {
+     os << indent << "typedef struct packed {\n";
+     for (int i=fi.fields.size() - 1; i >= 0; --i)
+       emit_sv_type_decl_helper(fi.fields[i], os, indent + " ", nm + "_" + fi.fields[i].name);
+     os << indent << "} " << nm << "_type; // width: " << fi.width << "\n";
+     os << indent << "" << dims << nm << "_type" << " " << fi.name << "; // width: " << fi.width << "\n";
+    } else {
+     os << indent << "reg " << dims << " [" << fi.width - 1 << ":0] " 
+        << fi.name << "; // width: " << dims_mult * fi.width << "\n";
+    }
+  }
+
+  void emit_systemvlog_type_decl(ofstream& vlog, std::string name, port_info& pi) {
+    if (pi.field_vec.size()) {
+      std::string type_str = name; 
+      if ((pi.type == "In") || (pi.type == "Out")) 
+        type_str += std::string("_") + _DATNAMESTR_;
+
+      vlog << "typedef struct packed {\n";
+      for (int i=pi.field_vec.size() - 1; i >= 0; --i) {
+        emit_sv_type_decl_helper(pi.field_vec[i], vlog, "  ", pi.field_vec[i].name);
+      }
+      vlog << "} " << type_str + "_type" << "; // width: " << pi.width << "\n\n";
     }
   }
 
@@ -741,23 +1011,66 @@ public:
     }
   }
 
-  void emit_io(ofstream& sc_h, std::string type, std::string name, std::string& io_type) {
+  void gen_name(std::vector<port_name>& vec, std::string type, std::string name, std::string& io_type, int width) {
     if (io_type == "In") {
-      sc_h << "  decltype(" << type << "." << _RDYNAMESTR_ 
-           << ")   CCS_INIT_S1(" << name << "_" << _RDYNAMESTR_ << ");\n";
-      sc_h << "  decltype(" << type << "." << _VLDNAMESTR_ 
-           << ")   CCS_INIT_S1(" << name << "_" << _VLDNAMESTR_ << ");\n";
-      sc_h << "  decltype(" << type << "." << _DATNAMESTR_ 
-           << ")   CCS_INIT_S1(" << name << "_" << _DATNAMESTR_ << ");\n";
+      port_name n; 
+      n.dotted_name = type + "." + _RDYNAMESTR_;
+      n.flat_name = name + "_" + _RDYNAMESTR_;
+      n.io = "sc_out";
+      n.is_sc_out_bool = 1;
+      n.width = 1;
+      vec.push_back(n);
+
+      n = port_name();
+
+      n.dotted_name = type + "." + _VLDNAMESTR_;
+      n.flat_name = name + "_" + _VLDNAMESTR_;
+      n.io = "sc_in";
+      n.is_sc_in_bool = 1;
+      n.width = 1;
+      vec.push_back(n);
+
+      n = port_name();
+
+      n.dotted_name = type + "." + _DATNAMESTR_;
+      n.flat_name = name + "_" + _DATNAMESTR_;
+      n.io = "sc_in";
+      n.width = width;
+      if (width)
+        vec.push_back(n);
     } else if (io_type == "Out") {
-      sc_h << "  decltype(" << type << "." << _RDYNAMESTR_ 
-           << ")   CCS_INIT_S1(" << name << "_" << _RDYNAMESTR_ << ");\n";
-      sc_h << "  decltype(" << type << "." << _VLDNAMESTR_ 
-           << ")   CCS_INIT_S1(" << name << "_" << _VLDNAMESTR_ << ");\n";
-      sc_h << "  decltype(" << type << "." << _DATNAMESTR_ 
-           << ")   CCS_INIT_S1(" << name << "_" << _DATNAMESTR_ << ");\n";
+      port_name n; 
+      n.dotted_name = type + "." + _RDYNAMESTR_;
+      n.flat_name = name + "_" + _RDYNAMESTR_;
+      n.io = "sc_in";
+      n.width = 1;
+      n.is_sc_in_bool = 1;
+      vec.push_back(n);
+
+      n = port_name();
+
+      n.dotted_name = type + "." + _VLDNAMESTR_;
+      n.flat_name = name + "_" + _VLDNAMESTR_;
+      n.io = "sc_out";
+      n.is_sc_out_bool = 1;
+      n.width = 1;
+      vec.push_back(n);
+
+      n = port_name();
+
+      n.dotted_name = type + "." + _DATNAMESTR_;
+      n.flat_name = name + "_" + _DATNAMESTR_;
+      n.width = width;
+      n.io = "sc_out";
+      if (width)
+        vec.push_back(n);
     } else {
-      sc_h << "  decltype(" << type << ")   CCS_INIT_S1(" << name << ");\n";
+      port_name n; 
+      n.dotted_name = type;
+      n.flat_name = name;
+      n.io = io_type;
+      n.width = width;
+      vec.push_back(n);
     }
   }
 
@@ -782,6 +1095,245 @@ public:
     size_t pos = input.find("::");
     if (pos != std::string::npos)
       return input.substr(pos + 2);
+    return input;
+  }
+
+  void gen_wrap_rtl() {
+    time_t now = time(0);
+    char* dt = ctime(&now);
+    remove_base();
+    port_name_vec.clear();
+
+    std::string inst(module_name + "_inst");
+    std::string rtl_inst(module_name + "_rtl_inst");
+    std::string rtl_proxy(module_name + "_rtl_proxy_type");
+
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+     if (port_info_vec[i].type != std::string("{}")) {
+      gen_name(port_name_vec, module_name  + "_inst." + port_info_vec[i].name, port_info_vec[i].name,
+              port_info_vec[i].type, port_info_vec[i].width);
+      if (port_info_vec[i].is_sc_in_bool)
+        port_name_vec.back().is_sc_in_bool = 1;
+      if (port_info_vec[i].is_sc_out_bool)
+        port_name_vec.back().is_sc_out_bool = 1;
+     } else {
+      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
+        gen_name(port_name_vec, 
+          child_type(i,c, "_inst.") , child_name(i,c) , port_info_vec[i].child_vec[c].type,
+           port_info_vec[i].child_vec[c].width);
+        if (port_info_vec[i].child_vec[c].is_sc_in_bool)
+          port_name_vec.back().is_sc_in_bool = 1;
+        if (port_info_vec[i].child_vec[c].is_sc_out_bool)
+          port_name_vec.back().is_sc_out_bool = 1;
+      }
+     }
+    }
+
+    ofstream sc_h;
+    sc_h.open(module_name + "_wrap_rtl.h");
+    std::cout << "Generating " << module_name << "_wrap_rtl.h" << "\n";
+    sc_h << "// Auto generated on: " << dt << "\n";
+    sc_h << "// This file wraps the post-HLS RTL model to enable instantiation in an SC testbench\n";
+    sc_h << "//  with the same SC interface as the original SC DUT\n\n";
+
+    sc_h << "#include <TypeToBits.h>\n";
+    sc_h << "#include \"" << module_name + ".h" << "\"" << "\n\n" ;
+    sc_h << "class " << rtl_proxy << " : public sc_foreign_module {\n";
+    sc_h << "public:\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool) {
+      if (n.io == "sc_out") {
+        sc_h << "  sc_out<sc_lv<" << n.width << ">> " << "CCS_INIT_S1(" << n.flat_name << ");\n";
+      } else {
+        sc_h << "  sc_in<sc_lv<" << n.width << ">> " << "CCS_INIT_S1(" << n.flat_name << ");\n";
+      }
+     }
+     else {
+      if (n.io == "sc_out") {
+        sc_h << "  sc_out<bool> " << "CCS_INIT_S1(" << n.flat_name << ");\n";
+      } else {
+        sc_h << "  sc_in<bool> " << "CCS_INIT_S1(" << n.flat_name << ");\n";
+      }
+     }
+    }
+
+    sc_h << "\n  " << rtl_proxy 
+                   << "(sc_module_name nm , const char* hdl_name=\"" << module_name << "_wrap_rtl\") \n";
+    sc_h << "    : sc_foreign_module(nm) {\n";
+    sc_h << "     elaborate_foreign_module(hdl_name, 0, (const char**)0); \n";
+    sc_h << "  }\n";
+
+    sc_h << "};\n\n\n";
+
+    sc_h << "class " << module_name + "_wrap_rtl" << " : public sc_module {\n";
+    sc_h << "public:\n";
+    sc_h << "  " << module_name << "& " << inst << ";\n\n";
+
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+      sc_h << "  decltype(" << inst << "." << port_info_vec[i].name 
+           << ") CCS_INIT_S1(" << port_info_vec[i].name << ");\n";
+    }
+
+    sc_h << "  \n\n";
+    sc_h << "  template <class T> struct type_info { };\n\n";
+    sc_h << "  template <class T> struct type_info<sc_in<T>> {\n";
+    sc_h << "    typedef T data_type;\n";
+    sc_h << "    static const int width = Wrapped<data_type>::width;\n";
+    sc_h << "    typedef sc_lv<width> sc_lv_type;\n";
+    sc_h << "    static const bool is_sc_out = 0;\n";
+    sc_h << "  };\n\n";
+    sc_h << "  template <class T> struct type_info<sc_out<T>> {\n";
+    sc_h << "    typedef T data_type;\n";
+    sc_h << "    static const int width = Wrapped<data_type>::width;\n";
+    sc_h << "    typedef sc_lv<width> sc_lv_type;\n";
+    sc_h << "    static const bool is_sc_out = 1;\n";
+    sc_h << "  };\n\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+      port_name& n = port_name_vec[i];
+      n.type_info_name = std::string("type_info_") + n.flat_name;
+      n.sig_name = std::string("sig_") + n.flat_name;
+      sc_h << "  typedef type_info<decltype(" << n.dotted_name << ")> " << n.type_info_name << ";\n";
+    }
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool)
+      sc_h << "  sc_signal<" << n.type_info_name << "::sc_lv_type> CCS_INIT_S1(" << n.sig_name << ");\n";
+    }
+
+    sc_h << "\n";
+
+    sc_h << "  " << rtl_proxy << " " << "CCS_INIT_S1(" << rtl_inst << ");\n";
+
+    sc_h << "  SC_HAS_PROCESS(" << module_name << "_wrap_rtl);\n\n";
+    sc_h << "  " << module_name << "_wrap_rtl(sc_module_name nm) : " << inst << "(*(" << module_name << "*)0){\n\n";
+
+    for (unsigned i=0; i<port_info_vec.size(); ++i) {
+     if (port_info_vec[i].type != std::string("{}")) {
+      if ((port_info_vec[i].type == "In") || (port_info_vec[i].type == "Out"))
+       if (port_info_vec[i].width)
+        sc_h << "    " << port_info_vec[i].name << ".disable_spawn();\n";
+     } else {
+      for (unsigned c=0; c < port_info_vec[i].child_vec.size(); ++c) {
+      if ((port_info_vec[i].child_vec[c].type == "In") || (port_info_vec[i].child_vec[c].type == "Out"))
+       if (port_info_vec[i].width)
+        sc_h << "    " << port_info_vec[i].name << "." 
+             << port_info_vec[i].child_vec[c].name << ".disable_spawn();\n";
+      }
+     }
+    }
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool) {
+      if (n.io == "sc_out") {
+        sc_h << "    SC_METHOD(method_" << n.flat_name << "); sensitive << " << n.sig_name << "; dont_initialize();\n";
+      } else {
+        sc_h << "    SC_METHOD(method_" << n.flat_name << "); sensitive << " 
+             << strip_dotted(n.dotted_name) << ";\n";
+      }
+     }
+    }
+
+
+    sc_h << "\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (n.is_sc_in_bool || n.is_sc_out_bool)
+      sc_h << "    " << rtl_inst << "." << n.flat_name << "(" << strip_dotted(n.dotted_name) << ");\n";
+     else
+      sc_h << "    " << rtl_inst << "." << n.flat_name << "(" << n.sig_name << ");\n";
+    }
+
+    sc_h << "  }\n\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool) {
+      sc_h << "  void method_" << n.flat_name << "(){\n";
+      sc_h << "    typename " << n.type_info_name << "::data_type obj;\n";
+      sc_h << "    typename " << n.type_info_name << "::sc_lv_type lv;\n";
+      if (n.io == "sc_in") {
+        sc_h << "    obj = " << strip_dotted(n.dotted_name) << ";\n";
+        sc_h << "    lv = TypeToBits(obj);\n";
+        sc_h << "    " << n.sig_name << " = lv;\n";
+      } else {
+        sc_h << "    lv = " << n.sig_name << ".read();\n";
+        sc_h << "    obj = BitsToType<decltype(obj)>(lv);\n";
+        sc_h << "    " << strip_dotted(n.dotted_name) << " = obj;\n";
+      }
+      sc_h << "  }\n";
+     }
+    }
+
+    sc_h << "\n";
+    sc_h << "};\n";
+    sc_h.close();
+
+    ofstream sv_v;
+    sv_v.open(module_name + "_wrap_rtl.sv");
+    std::cout << "Generating " << module_name << "_wrap_rtl.sv" << "\n";
+    sv_v << "// Auto generated on: " << dt << "\n";
+    sv_v << "// This file wraps the post-HLS RTL model to enable instantiation in an SC testbench\n";
+    sv_v << "// This sv wrapper transforms any packed structs into plain bit vectors\n";
+    sv_v << "// for interfacing with the SC TB\n";
+    sv_v << "\n";
+    sv_v << "module " << module_name << "_wrap_rtl (\n";
+
+    std::string comma(" ");
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     sv_v << "  " << comma << " " << n.flat_name << "\n";
+     comma = ",";
+    }
+
+    sv_v << ");\n\n";
+
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     if (!n.is_sc_in_bool && !n.is_sc_out_bool) {
+      if (n.io == "sc_out") {
+        sv_v << "  output [" << n.width - 1 << ":0] " << n.flat_name << ";\n";
+      } else {
+        sv_v << "  input  [" << n.width - 1 << ":0] " << n.flat_name << ";\n";
+      }
+     }
+     else {
+      if (n.io == "sc_out") {
+        sv_v << "  output " << n.flat_name << ";\n";
+      } else {
+        sv_v << "  input  " << n.flat_name << ";\n";
+      }
+     }
+    }
+
+    sv_v << "\n";
+    comma = " ";
+    sv_v << "  " << module_name << " " << module_name << "_inst (\n";
+    for (unsigned i=0; i<port_name_vec.size(); ++i) {
+     port_name& n = port_name_vec[i];
+     sv_v << "  " << comma << " ." << n.flat_name << "(" << n.flat_name << ")\n";
+     comma = ",";
+    }
+    sv_v << "  " << ");\n";
+
+    sv_v << "\nendmodule\n";
+    sv_v.close();
+
+  }
+
+  std::string strip_dotted(std::string& input) {
+    size_t pos = input.find(".");
+    if (pos != std::string::npos)
+      return input.substr(pos + 1);
     return input;
   }
 };

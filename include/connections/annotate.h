@@ -19,6 +19,7 @@
 // annotate.h
 //
 // Revision History:
+//  2.2.1    - CAT-38184 - Replace "_val" string check with macro _VLDNAMESTR_
 //  1.2.0    - Fixed bug in pathname handling in annotate_design()
 //
 //*****************************************************************************************
@@ -90,7 +91,7 @@ namespace Connections
       // Get the src_name and dest_name after subtracting off root
       std::string src_name = (*it)->src_name();
       {
-        if (src_name.substr(src_name.length() - 4,4) == "_val") { src_name.erase(src_name.length() - 4,4); }
+        if (src_name.substr(src_name.length() - 4,4) == "_" _VLDNAMESTR_) { src_name.erase(src_name.length() - 4,4); }
         std::size_t pos = src_name.find(root_name);
         if (pos != std::string::npos) { src_name.erase(pos, root_name.length()); }
 #ifdef MTI_SYSTEMC
@@ -100,7 +101,7 @@ namespace Connections
 
       std::string dest_name = (*it)->dest_name();
       {
-        if (dest_name.substr(dest_name.length() - 4,4) == "_val") { dest_name.erase(dest_name.length() - 4,4); }
+        if (dest_name.substr(dest_name.length() - 4,4) == "_" _VLDNAMESTR_) { dest_name.erase(dest_name.length() - 4,4); }
         std::size_t pos = dest_name.find(root_name);
         if (pos != std::string::npos) { dest_name.erase(pos, root_name.length()); }
 #ifdef MTI_SYSTEMC

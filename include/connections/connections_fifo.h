@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 2.2                                                 *
+ *  Software Version: 2.3                                                 *
  *                                                                        *
- *  Release Date    : Thu Aug 22 21:10:31 PDT 2024                        *
+ *  Release Date    : Tue May 13 15:55:46 PDT 2025                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 2.2.0                                               *
+ *  Release Build   : 2.3.0                                               *
  *                                                                        *
  *  Copyright 2020 Siemens                                                *
  *                                                                        *
@@ -35,6 +35,7 @@
 //   Configurable port names: (rdy/vld/dat) legacy: (rdy/val/msg)
 //
 // Revision History:
+//   2.2.1 - 2024-10-22 - Fixed CAT-38136 - Fifo of size 1 does not achieve full throughput
 //   2.2.0 - 2024-08-08 - Fixed CAT-37536 - Added Fifo_with_idle
 //   2.1.0 - 2023-10-16 - Fixed CAT-34870 - Include iomanip for setw
 //   2.1.0 - 2023-10-16 - Add reset polarity check in line_trace()
@@ -325,6 +326,93 @@ namespace Connections
     #endif //__SYNTHESIS__
   };
 
+  // Specialization for depth=1 to enable II=1 after HLS
+  // NOTE: for best area QOR, the enq port should be set to use coupled_io, e.g. :
+  // directive set /dut/Connections::Fifo<dut::T,1U,Connections::DIRECT_PORT>/enq.Pop():mio 
+  //       -MAP_TO_MODULE ccs_connections.ccs_conn_in_wait_coupled
+  // Once there is a pragma to do the above, it should be added to source code here.
+  template <typename Message>
+  class Fifo<Message, 1> : public sc_module
+  {
+    SC_HAS_PROCESS(Fifo);
+
+  public:
+    sc_in_clk clk;
+    sc_in<bool> rst;
+    In<Message> enq;
+    Out<Message> deq;
+
+    Fifo()
+      : sc_module(sc_module_name(sc_gen_unique_name("Fifo")))
+      , clk("clk")
+      , rst("rst")
+      , enq(sc_gen_unique_name("enq"))
+      , deq(sc_gen_unique_name("deq"))
+    {
+      Init();
+    }
+
+    Fifo(sc_module_name name)
+      : sc_module(name)
+      , clk("clk")
+      , rst("rst")
+      , enq(CONNECTIONS_CONCAT(name, "enq"))
+      , deq(CONNECTIONS_CONCAT(name, "deq"))
+    {
+      Init();
+    }
+
+  protected:
+    void Init() {
+      SC_THREAD(Seq);
+      sensitive << clk.pos();
+      CONNECTIONS_RESET_SIGNAL_IS(rst);
+    }
+
+    void Seq() {
+      enq.Reset();
+      deq.Reset();
+      wait();
+
+      #pragma hls_pipeline_init_interval 1
+      #pragma pipeline_stall_mode flush
+      while (1) {
+        deq.Push(enq.Pop());
+      }
+    }
+
+    public:
+    #ifndef __SYNTHESIS__
+    void line_trace() {
+      #ifdef CONNECTIONS_POS_RESET
+        bool rst_active = true;
+      #else
+        bool rst_active = false;
+      #endif
+      if (rst.read() != rst_active) {
+        unsigned int width = (Message().length() / 4);
+        // Enqueue port
+        if (enq._VLDNAME_.read() && enq._RDYNAME_.read()) {
+          std::cout << std::hex << std::setw(width) << enq._DATNAME_.read();
+        } else {
+          std::cout << std::setw(width + 1) << " ";
+        }
+
+        // std::cout << " ( " << full.read() << " ) ";
+
+        // Dequeue port
+        if (deq._VLDNAME_.read() && deq._RDYNAME_.read()) {
+          std::cout << std::hex << std::setw(width) << deq._DATNAME_.read();
+        } else {
+          std::cout << std::setw(width + 1) << " ";
+        }
+        std::cout << " | ";
+      }
+    }
+    #endif //__SYNTHESIS_  
+  };
+
+
 #ifdef CONNECTIONS_SIM_ONLY
   //------------------------------------------------------------------------
   // Fifo - TLM_PORT specialization uses sized tlm::tlm_fifo
@@ -395,7 +483,7 @@ struct Fifo_with_idle : public Connections::Fifo<Message,  NumEntries, port_mars
   using Base::enq;
   using Base::deq;
   using Base::sensitive;
-  
+
   sc_out<bool> is_idle;
 
   Fifo_with_idle() :
@@ -403,7 +491,7 @@ struct Fifo_with_idle : public Connections::Fifo<Message,  NumEntries, port_mars
       is_idle("is_idle")
   {
     SC_METHOD(gen_idle);
-    sensitive << enq.rdy << enq.vld << deq.vld << deq.rdy;
+    sensitive << enq._RDYNAME_ << enq._VLDNAME_ << deq._VLDNAME_ << deq._RDYNAME_;
   }
 
   Fifo_with_idle(const sc_module_name &name) :
@@ -411,15 +499,14 @@ struct Fifo_with_idle : public Connections::Fifo<Message,  NumEntries, port_mars
       is_idle(CONNECTIONS_CONCAT(name,"is_idle"))
   {
     SC_METHOD(gen_idle);
-    sensitive << enq.rdy << enq.vld << deq.vld << deq.rdy;
+    sensitive << enq._RDYNAME_ << enq._VLDNAME_ << deq._VLDNAME_ << deq._RDYNAME_;
   }
 
   void gen_idle() {
-    is_idle = !((enq.rdy && enq.vld) || (deq.vld && deq.rdy));
+    is_idle = !((enq._RDYNAME_ && enq._VLDNAME_) || (deq._VLDNAME_ && deq._RDYNAME_));
   }
 
 };
-
 
 }  // namespace Connections
 #endif  // CONNECTIONS_FIFO_H

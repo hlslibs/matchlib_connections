@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 2.2                                                 *
+ *  Software Version: 2.3                                                 *
  *                                                                        *
- *  Release Date    : Thu Aug 22 21:10:31 PDT 2024                        *
+ *  Release Date    : Tue May 13 15:55:46 PDT 2025                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 2.2.0                                               *
+ *  Release Build   : 2.3.0                                               *
  *                                                                        *
  *  Copyright 2023 Siemens                                                *
  *                                                                        *
@@ -38,6 +38,8 @@
 // Description: C++ Macros to simplify making user-defined struct types work in Connections
 //
 // Revision History:
+//       2.2.2 - Fix CAT-39602 - Changes from Stuart Swan
+//       2.2.1 - Fix CAT-38256 - Clean up compiler warnings about extra semicolons
 //       2.1.1 - Added back in typedef of 'this_type' for backward compatibility with
 //               older designs
 //             - Fix for CAT-35587 from Stuart Swan
@@ -55,6 +57,9 @@
 #define OK_BOOST_PASS 1
 #endif
 
+#include <connections/connections_utils.h>
+
+/*
 #ifndef __CONNECTIONS__CONNECTIONS_UTILS_H_
 // Prevent redefine warnings from NVHLS
 #undef CONNECTIONS_ASSERT_MSG
@@ -68,6 +73,7 @@
 #undef CONNECTIONS_SIM_ONLY_ASSERT_MSG
 #include <nvhls_connections_utils.h>
 #endif
+*/
 
 #include <boost/preprocessor/list/for_each.hpp>
 #include <boost/preprocessor/tuple/to_list.hpp>
@@ -402,7 +408,7 @@ public:
 
 #define GEN_WIDTH(FIELDS) \
   static const unsigned int width = 0 \
-    BOOST_PP_LIST_FOR_EACH(GEN_ADD_FIELD_WIDTH, _, FIELDS); \
+    BOOST_PP_LIST_FOR_EACH(GEN_ADD_FIELD_WIDTH, _, FIELDS) \
     ; 
   //
 
@@ -432,5 +438,11 @@ public:
   GEN_EQUAL(FIELD_LIST(X))
   //
 
+#define AUTO_GEN_FIELD_METHODS_V2(THIS_TYPE, X) \
+  typedef THIS_TYPE auto_gen_type; \
+  GEN_TRACE_METHOD(FIELD_LIST(X)) \
+  GEN_STREAM_METHOD(FIELD_LIST(X)) \
+  GEN_EQUAL(FIELD_LIST(X))
+  //
 
 

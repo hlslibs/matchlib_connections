@@ -20,6 +20,8 @@
 // marshaller.h
 //
 // Revision History:
+//  2.2.2    - CAT-31753 - Add Wrapped and Marshaller specialization for arrays
+//  2.2.1    - CAT-38139 - Fix BitUnion2 compile error
 //  2.1.0    - CAT-34971 - clean up compiler warnings (added methods to set default values)
 //  1.2.8    - fix number of long bits which can change based on 32-bit/64-bit target arch
 //  1.2.6    - CAT-29221
@@ -717,6 +719,39 @@ Marshaller<Size> &operator&(Marshaller<Size> &m, p2p<>::chan<Message> &rhs)
 
 #ifndef __CONNECTIONS__MARSHALLER_H_
 #define __CONNECTIONS__MARSHALLER_H_
+
+/* Wrapped class specialization helper for arrays. */
+template <class T, unsigned int N>
+class Wrapped<T[N]>
+{
+public:
+  typedef T Type[N];
+  Type val;
+  Wrapped() {}
+  Wrapped(const Type &v) {
+    for (unsigned int i=0; i<N; i++) {
+      val[i] = v[i];
+    }
+  }
+  static const unsigned int width = N * Wrapped<T>::width;
+  static const bool is_signed = Wrapped<T>::is_signed;
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    for (unsigned int i=0; i<N; i++) {
+      m &val[i];
+    }
+  }
+};
+
+template<unsigned int Size, typename T, unsigned int N>
+Marshaller<Size>& operator&(Marshaller<Size> &m, T (&rhs)[N])
+{
+  for (unsigned int i=0; i<N; i++) {
+    m &rhs[i];
+  }
+  return m;
+}
+
 /**
  * \brief StaticMax Class: returns the larger value between two unsigned integers
  * \ingroup StaticMax
@@ -789,21 +824,21 @@ public:
     CONNECTIONS_SIM_ONLY_ASSERT_MSG(tag == 0, "Tag doesn't match request! Use GetB() instead.");
     Marshaller<width> m(payload);
     Wrapped<A> result;
-    result.Marshall<width>(m);
+    result.template Marshall<width>(m);
     return result.val;
   }
   B GetB() const {
     CONNECTIONS_SIM_ONLY_ASSERT_MSG(tag == 1, "Tag doesn't match request! Use GetA() instead.");
     Marshaller<width> m(payload);
     Wrapped<B> result;
-    result.Marshall<width>(m);
+    result.template Marshall<width>(m);
     return result.val;
   }
 
   void Set(const A &data) {
     Wrapped<A> wdata(data);
     Marshaller<Wrapped<A>::width> m;
-    wdata.Marshall<Wrapped<A>::width>(m);
+    wdata.template Marshall<Wrapped<A>::width>(m);
     payload = 0; //note, we could directly assign m.GetResult here. Assuming payload is wider, systemC would pad with zeros.
     //but if payload is narrower, systemc would silently truncate. We'd want to avoid that. Range below would
     //fail if payload is narrower
@@ -813,7 +848,7 @@ public:
   void Set(const B &data) {
     Wrapped<B> wdata(data);
     Marshaller<Wrapped<B>::width> m;
-    wdata.Marshall<Wrapped<B>::width>(m);
+    wdata.template Marshall<Wrapped<B>::width>(m);
     payload = 0; //same as in Set(A) above
     payload.range(Wrapped<B>::width - 1, 0) = m.GetResult();
     tag = 1;

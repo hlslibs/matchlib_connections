@@ -21,6 +21,9 @@
 // Define macros and typedefs to use within Connections. May be tool or
 // library dependent.
 //
+// Revision History:
+//  2.2.1    - CAT-38304 - Change directive #if to #ifdef __SYNTHESIS__
+//
 //*****************************************************************************************
 
 #ifndef __CONNECTIONS__CONNECTIONS_UTILS_H_
@@ -85,7 +88,7 @@
 // Define preferred debug mechanism.
 // FIXME: Change this to not support << but be a string instead, so can be pushed over to
 // sc_report as well.
-#if __SYNTHESIS__
+#ifdef __SYNTHESIS__
 #define CONNECTIONS_COUT(x) ((void)0);
 #else
 #define CONNECTIONS_COUT(x) std::cout << x

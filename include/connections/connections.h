@@ -1,5 +1,6 @@
 
 
+
 /*
  * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
  *
@@ -19,6 +20,10 @@
 // connections.h
 //
 // Revision History:
+//   2.2.3   - CAT-39436 - Add signal debug for custom types in simulation
+//   2.2.2   - CAT-38997 - Add simulation support for In/Out/Combinational::PeekNB()
+//           - CAT-39113 - Enforce Reset() is called for simulation
+//   2.2.1   - CAT-38188 - Updates to support SystemC 3.0 and fixes
 //   2.2.0   - CAT-34924 - use DIRECT_PORT by default for pre-HLS simulation
 //             CAT-37259 - Add macro guard around include of sc_reset.h
 //   2.1.1   - CAT-31705 - free dynamically allocated memory
@@ -96,6 +101,7 @@
 #include <iomanip>
 #include <vector>
 #include <map>
+#include <type_traits>
 #include <tlm.h>
 #if !defined(NC_SYSTEMC) && !defined(XM_SYSTEMC) && !defined(NO_SC_RESET_INCLUDE)
 #include <sysc/kernel/sc_reset.h>
@@ -213,15 +219,19 @@ namespace Connections
 
 #if defined(__SYNTHESIS__)
 #define AUTO_PORT Connections::SYN_PORT
+#define AUTO_PORT_VAL 0
 #elif !defined(CONNECTIONS_SIM_ONLY)
 #define AUTO_PORT Connections::DIRECT_PORT
+#define AUTO_PORT_VAL 2
 #else
 
 // Switch if we are in CONNECTIONS_SIM_ONLY
 #if defined(CONNECTIONS_FAST_SIM)
 #define AUTO_PORT Connections::TLM_PORT
+#define AUTO_PORT_VAL 3
 #else
 #define AUTO_PORT Connections::DIRECT_PORT
+#define AUTO_PORT_VAL 2
 #endif
 
 #endif // defined(__SYNTHESIS__)
@@ -234,6 +244,8 @@ namespace Connections
 #if defined(__SYNTHESIS__)
 #undef AUTO_PORT
 #define AUTO_PORT Connections::SYN_PORT
+#undef AUTO_PORT_VAL
+#define AUTO_PORT_VAL 0
 #endif // defined(__SYNTHESIS__)
 
   /**
@@ -249,10 +261,20 @@ namespace Connections
 #if defined(FORCE_AUTO_PORT)
 #undef AUTO_PORT
 #define AUTO_PORT FORCE_AUTO_PORT
+#undef AUTO_PORT_VAL
+#define AUTO_PORT_VAL 2	  // Not always accurate, but OK..
 #endif // defined(FORCE_AUTO_PORT)
 
 #if defined(CONNECTIONS_SYN_SIM)
   static_assert(AUTO_PORT != TLM_PORT, "Connections::TLM_PORT not supported in Synthesis simulation mode");
+#endif
+
+#if AUTO_PORT_VAL == 1
+#warning "Warning: Use of MARSHALL_PORT is deprecated. Use DIRECT_PORT instead."
+#endif
+
+#if AUTO_PORT_VAL == 0
+#warning "Warning: Use of SYN_PORT is deprecated. Use DIRECT_PORT instead."
 #endif
 
 // Forward declarations
@@ -363,6 +385,55 @@ SpecialWrapperIfc(Connections::Out);
 namespace Connections
 {
 
+  // Enable debug for custom types in simulation
+  // primary template
+  template <typename T, typename = void>
+  class dbg_signal : public sc_signal<T>
+  {
+  public:
+    dbg_signal() {}
+    dbg_signal(const char* s) : sc_signal<T>(s) {}
+  };
+
+#if defined(CONNECTIONS_CUSTOM_DEBUG) && !defined(__SYNTHESIS__)
+  // Helper trait to detect .Marshall() method
+  template <typename T, typename = void>
+  struct has_Marshall_method : std::false_type {};
+
+  template <typename T>
+  struct has_Marshall_method<T,
+    decltype(std::declval<T>().Marshall(std::declval<Marshaller<Wrapped<T>::width>&>()), void())>
+    : std::true_type {};
+
+  // specialization for types that have a marshall method (needs custom debug callback in vsim)
+  template <typename T>
+  class dbg_signal<T,  typename std::enable_if<has_Marshall_method<T>::value>::type>
+    : public sc_signal<T>
+  {
+  public:
+    dbg_signal() { do_reg(); }
+    dbg_signal(const char* s) : sc_signal<T>(s) { do_reg(); }
+
+    static const int maxlen = 100;
+
+    static void debug_cb(void* var, char* mti_value, char format_str)
+    {
+      T* p = reinterpret_cast<T*>(var);
+      std::ostringstream ss;
+      ss << std::hex << *p;
+      strncpy(mti_value, ss.str().c_str(), maxlen - 2);
+      mti_value[maxlen-1] = 0;
+    }
+
+    void do_reg() {
+#ifdef SC_MTI_REGISTER_CUSTOM_DEBUG
+     sc_signal<T>* sig = this;
+     SC_MTI_REGISTER_CUSTOM_DEBUG(sig, maxlen, debug_cb);
+#endif
+    }
+  };
+#endif // CONNECTIONS_CUSTOM_DEBUG
+
   template <class T>
   T
   static convert_from_lv(sc_lv<Wrapped<T>::width> lv) {
@@ -437,7 +508,7 @@ namespace Connections
     }
 #endif
 
-    void check() {
+    bool check() {
       if (!is_reset) {
 #ifndef __SYNTHESIS__
         std::string name = report_name();
@@ -446,7 +517,9 @@ namespace Connections
             + std::string(sc_core::sc_get_current_process_b()->basename()) + "'.").c_str());
 #endif
         is_reset = true;
+        return 1;
       }
+      return 0;
     }
 
     void set_val_name(const char *name_) {
@@ -477,15 +550,7 @@ namespace Connections
 // rand_stall_enable() or by CONN_RAND_STALL
 #define __CONN_RAND_STALL_FEATURE
 
-  template <class Dummy>
-  struct clk_statics {
-    static const sc_time epsilon;
-  };
-
-  template <class Dummy>
-  const sc_time clk_statics<Dummy>::epsilon = sc_time(0.01, SC_NS);
-
-  class SimConnectionsClk : public clk_statics<void>
+  class SimConnectionsClk
   {
   public:
     SimConnectionsClk() {
@@ -565,6 +630,8 @@ namespace Connections
     }
 
     void start_of_simulation() {
+      // Set epsilon to default value at start of simulation, after time resolution has been set
+      epsilon = sc_time(0.01, SC_NS);
       const std::vector<sc_object *> tops = sc_get_top_level_objects();
       for (unsigned i=0; i < tops.size(); i++) {
         if (tops[i]) { find_clocks(tops[i]); }
@@ -591,6 +658,8 @@ namespace Connections
 
   private:
 
+    sc_core::sc_time epsilon;
+
     inline sc_time get_period_delay(int c) const {
       return clk_info_vector.at(c).clk_ptr->period();
     }
@@ -614,8 +683,6 @@ namespace Connections
   {
   public:
     Blocking_abs() {
-       clock_registered=false;
-       sibling_port=0; non_leaf_port=false; clock_number=0; 
        DBG_CONNECT("Blocking_abs CTOR: " << std::hex << (void*)this );
     };
     virtual ~Blocking_abs() {}
@@ -623,13 +690,14 @@ namespace Connections
     virtual bool Pre()  {return false;};
     virtual bool PrePostReset()  {return false;};
     virtual std::string full_name() { return "unnamed"; }
-    bool clock_registered;
-    bool non_leaf_port;
-    bool disable_spawn_true;
-    int  clock_number;
-    virtual void do_reset_check() {}
+    bool clock_registered{0};
+    bool non_leaf_port{0};
+    bool disable_spawn_true{0};
+    virtual void disable_spawn() {}
+    int  clock_number{0};
+    virtual bool do_reset_check() {return 0;}
     virtual std::string report_name() {return std::string("unnamed"); }
-    Blocking_abs *sibling_port;
+    Blocking_abs *sibling_port{0};
   };
 
 
@@ -769,8 +837,16 @@ namespace Connections
     void check_registration(bool b) {
       wait(50, SC_PS); // allow all Reset calls to complete, so that add_clock_event calls are all done
 
-      // 2 loops here: first will produce list of all warnings, second will error out on first error.
-      for (unsigned i=0; i < tracked.size(); i++) { tracked[i]->do_reset_check(); }
+      bool error{0};
+
+      // first produce list of all warnings
+      for (unsigned i=0; i < tracked.size(); i++) { error |= tracked[i]->do_reset_check(); }
+
+      if (error) {
+         SC_REPORT_ERROR("CONNECTIONS-125",
+           std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: ").c_str());
+         sc_stop();
+      }
 
       for (unsigned i=0; i < tracked.size(); i++) {
         if (!!tracked[i] && (!tracked[i]->clock_registered || (map_port_to_event[tracked[i]] == 0))) {
@@ -826,7 +902,7 @@ namespace Connections
               ss << "Two processes using same clock have different reset specs: \n"
                  << v[0].to_string() << "\n"
                  << v[u].to_string() << "\n";
-              SC_REPORT_ERROR("CONNECTIONS-212", ss.str().c_str());
+              SC_REPORT_WARNING("CONNECTIONS-212", ss.str().c_str());
             }
       }
     }
@@ -1696,6 +1772,11 @@ namespace Connections
       return m;
     }
 
+    bool PeekNB(Message &/*data*/, const bool &/*unused*/ = true) {
+      CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+      return false;      
+    }
+
 // PopNB
 #pragma design modulario < in >
     virtual bool PopNB(Message &data, const bool &do_wait = true) {
@@ -1751,8 +1832,8 @@ namespace Connections
 #endif
     }
 
-    void do_reset_check() {
-      this->read_reset_check.check();
+    bool do_reset_check() {
+      return this->read_reset_check.check();
     }
 
 #ifndef __SYNTHESIS__
@@ -1796,6 +1877,14 @@ namespace Connections
       Message m;
       read_msg(m);
       return m;
+    }
+
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      read_msg(data);
+#ifdef __SYNTHESIS__      
+      _RDYNAME_.write(false);
+#endif
+      return _VLDNAME_.read();
     }
 
 // PopNB
@@ -1864,8 +1953,8 @@ namespace Connections
 #endif
     }
 
-    void do_reset_check() {
-      this->read_reset_check.check();
+    bool do_reset_check() {
+      return this->read_reset_check.check();
     }
 
 #ifndef __SYNTHESIS__
@@ -1892,6 +1981,10 @@ namespace Connections
 #pragma design modulario < in >
     Message Peek() {
       return InBlocking_Ports_abs<Message>::Peek();
+    }
+
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return InBlocking_Ports_abs<Message>::PeekNB(data);
     }
 
 // PopNB
@@ -2363,6 +2456,12 @@ namespace Connections
       return InBlocking_Ports_abs<Message>::Peek();
     }
 
+#pragma builtin_modulario
+#pragma design modulario < peek >
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return InBlocking_Ports_abs<Message>::PeekNB(data);
+    }
+    
 // PopNB
 #pragma builtin_modulario
 #pragma design modulario < in >
@@ -2542,6 +2641,7 @@ namespace Connections
     }
 
     // Pop
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() {
       return InBlocking_SimPorts_abs<Message>::Pop();
@@ -2553,7 +2653,14 @@ namespace Connections
       return InBlocking_SimPorts_abs<Message>::Peek();
     }
 
+#pragma builtin_modulario
+#pragma design modulario < peek >    
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return InBlocking_SimPorts_abs<Message>::PeekNB(data);
+    }
+    
 // PopNB
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data, const bool &do_wait = true) {
       return InBlocking_SimPorts_abs<Message>::PopNB(data, do_wait);
@@ -2731,6 +2838,12 @@ namespace Connections
       return InBlocking_SimPorts_abs<Message>::Peek();
     }
 
+#pragma builtin_modulario
+#pragma design modulario < peek >
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+        return InBlocking_SimPorts_abs<Message>::PeekNB(data);
+    }    
+
     // PopNB
 #pragma builtin_modulario
 #pragma design modulario < in >
@@ -2813,8 +2926,8 @@ namespace Connections
       while (i_fifo->nb_get(temp));
     }
 
-    void do_reset_check() {
-      this->read_reset_check.check();
+    bool do_reset_check() {
+      return this->read_reset_check.check();
     }
 
 #ifndef __SYNTHESIS__
@@ -2844,6 +2957,11 @@ namespace Connections
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
       return i_fifo->peek();
+    }
+
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      assert(0);
+      return false; // i_fifo-> tlm::tlm_get_peek_if<Message> ::nb_peek(data);
     }
 
 // PopNB
@@ -3120,8 +3238,8 @@ namespace Connections
 #endif
     }
 
-    void do_reset_check() {
-      this->write_reset_check.check();
+    bool do_reset_check() {
+      return this->write_reset_check.check();
     }
 
 #ifndef __SYNTHESIS__
@@ -3212,8 +3330,8 @@ namespace Connections
 #endif
     }
 
-    void do_reset_check() {
-      this->write_reset_check.check();
+    bool do_reset_check() {
+      return this->write_reset_check.check();
     }
 
 #ifndef __SYNTHESIS__
@@ -3592,12 +3710,14 @@ namespace Connections
     }
 
 // Push
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) {
       OutBlocking_SimPorts_abs<Message>::Push(m);
     }
 
 // PushNB
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m, const bool &do_wait = true) {
       return OutBlocking_SimPorts_abs<Message>::PushNB(m,do_wait);
@@ -3968,8 +4088,8 @@ namespace Connections
       get_conManager().add_clock_event(this);
     }
 
-    void do_reset_check() {
-      this->write_reset_check.check();
+    bool do_reset_check() {
+      return this->write_reset_check.check();
     }
 
 #ifndef __SYNTHESIS__
@@ -4201,6 +4321,11 @@ namespace Connections
       return m;
     }
 
+    bool PeekNB(Message &/*data*/, const bool &/*unused*/ = true) {
+      CONNECTIONS_ASSERT_MSG(0, "Unreachable virtual function in abstract class!");
+      return false;
+    }
+    
 // PopNB
 #pragma design modulario < in >
     bool PopNB(Message &data) {
@@ -4232,6 +4357,9 @@ namespace Connections
 
   template <typename Message>
   class Combinational_Ports_abs : public Combinational_abs<Message>
+#ifdef CONNECTIONS_SIM_ONLY
+    , public Blocking_abs
+#endif
   {
   public:
     // Interface
@@ -4277,9 +4405,11 @@ namespace Connections
       reset_msg();
     }
 
-    void do_reset_check() {
-      this->read_reset_check.check();
-      this->write_reset_check.check();
+    bool do_reset_check() {
+      bool r{0};
+      r |= this->read_reset_check.check();
+      r |= this->write_reset_check.check();
+      return r;
     }
 
 #ifndef __SYNTHESIS__
@@ -4321,6 +4451,15 @@ namespace Connections
       return m;
     }
 
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      read_msg(data);
+#ifdef __SYNTHESIS__      
+      _RDYNAME_.write(false);
+#endif
+      return _VLDNAME_.read();
+    }
+    
+    
 // PopNB
 #pragma builtin_modulario
 #pragma design modulario < in >
@@ -4512,7 +4651,7 @@ namespace Connections
 #endif
     }
 
-    void do_reset_check() {
+    bool do_reset_check() {
       /*
           this->read_reset_check.check();
           this->write_reset_check.check();
@@ -4528,6 +4667,7 @@ namespace Connections
           been called, even though get_conManager().add() method is always called for this channel.
           So, in ConManager if we see that add_clock_event was not called for this class, it is OK.
       */
+      return 0;
     }
 
 // Pop
@@ -4536,7 +4676,11 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! out_bound); */
 
-      this->read_reset_check.check();
+      if (this->read_reset_check.check()) {
+         SC_REPORT_ERROR("CONNECTIONS-125",
+           std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: ").c_str());
+         sc_stop();
+      }
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
@@ -4553,7 +4697,11 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! out_bound); */
 
-      this->read_reset_check.check();
+      if (this->read_reset_check.check()) {
+         SC_REPORT_ERROR("CONNECTIONS-125",
+           std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: ").c_str());
+         sc_stop();
+      }
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
@@ -4564,13 +4712,30 @@ namespace Connections
 #endif
     }
 
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+#ifdef CONNECTIONS_SIM_ONLY
+      this->read_reset_check.check();
+#ifdef CONNECTIONS_ACCURATE_SIM
+      get_sim_clk().check_on_clock_edge(this->clock_number);
+#endif
+      return sim_in.PeekNB(data);
+#else
+      return Combinational_Ports_abs<Message>::PeekNB(data);
+#endif
+
+    }
+
 // PopNB
 #pragma design modulario < in >
     bool PopNB(Message &data) {
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! out_bound); */
 
-      this->read_reset_check.check();
+      if (this->read_reset_check.check()) {
+         SC_REPORT_ERROR("CONNECTIONS-125",
+           std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: ").c_str());
+         sc_stop();
+      }
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
@@ -4595,7 +4760,11 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! in_bound); */
 
-      this->write_reset_check.check();
+      if (this->write_reset_check.check()) {
+         SC_REPORT_ERROR("CONNECTIONS-125",
+           std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: ").c_str());
+         sc_stop();
+      }
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
@@ -4613,7 +4782,11 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       /* assert(! in_bound); */
 
-      this->write_reset_check.check();
+      if (this->write_reset_check.check()) {
+         SC_REPORT_ERROR("CONNECTIONS-125",
+           std::string("Unable to resolve clock on port - check and fix any prior warnings about missing Reset() on ports: ").c_str());
+         sc_stop();
+      }
 #ifdef CONNECTIONS_ACCURATE_SIM
       get_sim_clk().check_on_clock_edge(this->clock_number);
 #endif
@@ -4946,6 +5119,13 @@ namespace Connections
       return Combinational_Ports_abs<Message>::Peek();
     }
 
+#pragma builtin_modulario
+#pragma design modulario < peek >    
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return Combinational_Ports_abs<Message>::PeekNB(data, true);
+    }
+    
+
 // PopNB
 #pragma builtin_modulario
 #pragma design modulario < in >
@@ -5015,7 +5195,7 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
     sc_signal<MsgBits> _DATNAMEIN_;
     sc_signal<MsgBits> _DATNAMEOUT_;
-    OutBlocking<Message> *driver;
+    OutBlocking<Message, MARSHALL_PORT> *driver;
 #else
     sc_signal<MsgBits> _DATNAME_;
 #endif
@@ -5032,9 +5212,18 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       driver = 0;
 
-      //SC_METHOD(do_bypass);
-      declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      // SC_METHOD(do_bypass); // Cannot use due to duplicate name warnings during runtime..
+      // this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      {
+        sc_spawn_options opt;
+        opt.spawn_method();
+        opt.set_sensitivity(&(this->_DATNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_VLDNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_RDYNAMEOUT_.default_event()));
+        opt.dont_initialize();
+        sc_spawn(sc_bind(&Combinational<Message, MARSHALL_PORT>::do_bypass, this), 0, &opt);
+      }
+
 #endif
     }
 
@@ -5051,9 +5240,18 @@ namespace Connections
 #ifdef CONNECTIONS_SIM_ONLY
       driver = 0;
 
-      //SC_METHOD(do_bypass);
-      declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      // SC_METHOD(do_bypass); // Cannot use due to duplicate name warnings during runtime..
+      // this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      {
+        sc_spawn_options opt;
+        opt.spawn_method();
+        opt.set_sensitivity(&(this->_DATNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_VLDNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_RDYNAMEOUT_.default_event()));
+        opt.dont_initialize();
+        sc_spawn(sc_bind(&Combinational<Message, MARSHALL_PORT>::do_bypass, this), 0, &opt);
+      }
+
 #endif
     }
     
@@ -5074,14 +5272,24 @@ namespace Connections
     // Parent functions, to get around Catapult virtual function bug.
     void ResetRead() { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::ResetRead(); }
     void ResetWrite() { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::ResetWrite(); }
+#pragma builtin_modulario
 #pragma design modulario < in >
     Message Pop() { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::Pop(); }
 #pragma design modulario < in >
     Message Peek() { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::Peek(); }
+#pragma builtin_modulario
+#pragma design modulario < peek >    
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PeekNB(data, true);
+    }
+    
+#pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data) { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PopNB(data); }
+#pragma builtin_modulario
 #pragma design modulario < out >
     void Push(const Message &m) { Combinational_SimPorts_abs<Message,MARSHALL_PORT>::Push(m); }
+#pragma builtin_modulario
 #pragma design modulario < out >
     bool PushNB(const Message &m) { return Combinational_SimPorts_abs<Message,MARSHALL_PORT>::PushNB(m);  }
 
@@ -5225,11 +5433,15 @@ namespace Connections
   public:
     // Interface
 #ifdef CONNECTIONS_SIM_ONLY
-    sc_signal<Message> _DATNAMEIN_;
-    sc_signal<Message> _DATNAMEOUT_;
+    dbg_signal<Message> _DATNAMEIN_;
+    dbg_signal<Message> _DATNAMEOUT_;
     OutBlocking<Message, DIRECT_PORT> *driver{0};  // DGB
 #else
+#ifdef __SYNTHESIS__
     sc_signal<Message> _DATNAME_;
+#else
+    dbg_signal<Message> _DATNAME_;
+#endif
 #endif
 
     Combinational() : Combinational_SimPorts_abs<Message, DIRECT_PORT>()
@@ -5242,9 +5454,17 @@ namespace Connections
 #endif
     {
 #ifdef CONNECTIONS_SIM_ONLY
-      //SC_METHOD(do_bypass);
-      declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      // SC_METHOD(do_bypass); // Cannot use due to duplicate name warnings during runtime..
+      // this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      {
+        sc_spawn_options opt;
+        opt.spawn_method();
+        opt.set_sensitivity(&(this->_DATNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_VLDNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_RDYNAMEOUT_.default_event()));
+        opt.dont_initialize();
+        sc_spawn(sc_bind(&Combinational<Message, DIRECT_PORT>::do_bypass, this), 0, &opt);
+      }
 #endif
     }
 
@@ -5258,9 +5478,17 @@ namespace Connections
 #endif
     {
 #ifdef CONNECTIONS_SIM_ONLY
-      //SC_METHOD(do_bypass);
-      declare_method_process(do_bypass_handle, sc_gen_unique_name("do_bypass"), SC_CURRENT_USER_MODULE, do_bypass);
-      this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      // SC_METHOD(do_bypass); // Cannot use due to duplicate name warnings during runtime..
+      // this->sensitive << _DATNAMEIN_ << this->_VLDNAMEIN_ << this->_RDYNAMEOUT_;
+      {
+        sc_spawn_options opt;
+        opt.spawn_method();
+        opt.set_sensitivity(&(this->_DATNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_VLDNAMEIN_.default_event()));
+        opt.set_sensitivity(&(this->_RDYNAMEOUT_.default_event()));
+        opt.dont_initialize();
+        sc_spawn(sc_bind(&Combinational<Message, DIRECT_PORT>::do_bypass, this), 0, &opt);
+      }
 #endif
     }
 
@@ -5284,6 +5512,13 @@ namespace Connections
     Message Pop() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::Pop(); }
 #pragma design modulario < in >
     Message Peek() { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::Peek(); }
+
+#pragma builtin_modulario
+#pragma design modulario < peek >    
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PeekNB(data, true);
+    }
+    
 #pragma builtin_modulario
 #pragma design modulario < in >
     bool PopNB(Message &data) { return Combinational_SimPorts_abs<Message,DIRECT_PORT>::PopNB(data); }
@@ -5419,7 +5654,6 @@ namespace Connections
   template <typename Message>
   class Combinational <Message, TLM_PORT> :
     public Combinational_Ports_abs<Message>
-  , public Blocking_abs
   , public sc_trace_marker
   , public sc_object
   , public write_log_if<Message>
@@ -5448,11 +5682,12 @@ namespace Connections
       get_conManager().add_clock_event(this);
     }
 
-    void do_reset_check() {
+    bool do_reset_check() {
       /*
           this->read_reset_check.check();
           this->write_reset_check.check();
       */
+      return 0;
     }
 
 #ifndef __SYNTHESIS__
@@ -5481,6 +5716,10 @@ namespace Connections
       return fifo.peek();
     }
 
+    bool PeekNB(Message &data, const bool &/*unused*/ = true) {
+      return fifo.nb_peek(data);
+    }
+    
 // PopNB
 #pragma design modulario < in >
     bool PopNB(Message &data) {
