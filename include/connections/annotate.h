@@ -173,7 +173,7 @@ namespace Connections
     // Try reading document from input.json
     std::ifstream ifs(input_path.c_str());
     if (! ifs.fail()) {
-      CONNECTIONS_COUT("Info: Reading back-annotation from " << input_path << ". Please diff " << input_path << " and " << output_path << " to ensure it matches expectations." << endl);
+      CONNECTIONS_COUT("Info: Reading back-annotation from " << input_path << ". Please check " << input_path << " and " << output_path << " to ensure it matches expectations." << endl);
       rapidjson::IStreamWrapper isw(ifs);
       d.ParseStream(isw);
     } else {
