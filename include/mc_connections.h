@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 2.4                                                 *
+ *  Software Version: 2025.4                                              *
  *                                                                        *
- *  Release Date    : Tue Aug 12 22:42:26 PDT 2025                        *
+ *  Release Date    : Tue Nov 11 18:46:00 PST 2025                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 2.4.0                                               *
+ *  Release Build   : 2025.4.0                                            *
  *                                                                        *
  *  Copyright 2020 Siemens                                                *
  *                                                                        *
