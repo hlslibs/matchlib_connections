@@ -103,7 +103,7 @@
 #include <map>
 #include <type_traits>
 #include <tlm.h>
-#if !defined(NC_SYSTEMC) && !defined(XM_SYSTEMC) && !defined(NO_SC_RESET_INCLUDE)
+#if (defined(XM_SC_RESET) || !defined(XM_SYSTEMC)) && !defined(NO_SC_RESET_INCLUDE)
 #include <sysc/kernel/sc_reset.h>
 #define HAS_SC_RESET_API
 #endif
@@ -920,9 +920,15 @@ namespace Connections
 #ifdef HAS_SC_RESET_API
         // Code written in restricted style to work on OSCI/Accellera sim as well as Questa and VCS
         // when SYSTEMC_HOME/sysc/kernel/sc_reset.h is available
+#if defined(XM_SYSTEMC)
+        int static_events_size() { return (int)get_static_events().size(); }
+        const sc_event *first_event() { return get_static_events()[0]; }
+        std::vector<sc_reset *> &get_sc_reset_vector() { return get_resets(); }
+#else
         int static_events_size() { return m_static_events.size(); }
         const sc_event *first_event() { return m_static_events[0]; }
         std::vector<sc_reset *> &get_sc_reset_vector() { return m_resets; }
+#endif
 #else
         // Remove dependency on sc_reset.h, but requires user call Connections::set_sim_clk(&clk) before sc_start() 
         int static_events_size() { return 1; }

@@ -2,11 +2,11 @@
  *                                                                        *
  *  HLS Connections Library                                               *
  *                                                                        *
- *  Software Version: 2026.2                                              *
+ *  Software Version: 2026.3                                              *
  *                                                                        *
- *  Release Date    : Tue Jun 30 15:31:57 PDT 2026                        *
+ *  Release Date    : Wed Sep  2 20:20:19 PDT 2026                        *
  *  Release Type    : Production Release                                  *
- *  Release Build   : 2026.2.1                                            *
+ *  Release Build   : 2026.3.0                                            *
  *                                                                        *
  *  Copyright 2020 Siemens                                                *
  *                                                                        *
@@ -97,24 +97,24 @@ namespace Connections
       sync_checker rd_chk, wr_chk;
 
     public:
-      sc_signal <bool> vld;
-      sc_signal <bool> rdy;
+      sc_signal <bool> _VLDNAME_;
+      sc_signal <bool> _RDYNAME_;
       static const unsigned int width=0;
 
       chan(sc_module_name name = sc_gen_unique_name("conn_sync_chan"))
         : sc_module(name)
         , rd_chk(name, "call reset_sync_out()", "synchronize from this channel")
         , wr_chk(name, "call reset_sync_in()", "synchronize to this channel")
-        , vld( CONNECTIONS_CONCAT(name,"vld") )
-        , rdy( CONNECTIONS_CONCAT(name,"rdy") )
+        , _VLDNAME_( CONNECTIONS_CONCAT(name,_VLDNAMESTR_) )
+        , _RDYNAME_( CONNECTIONS_CONCAT(name,_RDYNAMESTR_) )
       {}
 
       void reset_sync_out() {
-        vld.write(false);
+        _VLDNAME_.write(false);
         wr_chk.ok();
       }
       void reset_sync_in() {
-        rdy.write(false);
+        _RDYNAME_.write(false);
         rd_chk.ok();
       }
 
@@ -122,10 +122,10 @@ namespace Connections
       #pragma design modulario<sync>
       bool nb_sync_in() {
         rd_chk.test();
-        rdy.write(true);
+        _RDYNAME_.write(true);
         wait();
-        rdy.write(false);
-        return vld.read();
+        _RDYNAME_.write(false);
+        return _VLDNAME_.read();
       }
 
       #pragma builtin_modulario
@@ -134,10 +134,10 @@ namespace Connections
       void sync_in(T &...t) {
         rd_chk.test();
         do {
-          rdy.write(true);
+          _RDYNAME_.write(true);
           wait();
-        } while (vld.read() != true );
-        rdy.write(false);
+        } while (_VLDNAME_.read() != true );
+        _RDYNAME_.write(false);
       }
 
       #pragma builtin_modulario
@@ -146,10 +146,10 @@ namespace Connections
       void sync_out(T &...t) {
         wr_chk.test();
         do {
-          vld.write(true);
+          _VLDNAME_.write(true);
           wait();
-        } while (rdy.read() != true );
-        vld.write(false);
+        } while (_RDYNAME_.read() != true );
+        _VLDNAME_.write(false);
       }
     };   // chan
 
@@ -160,18 +160,18 @@ namespace Connections
       sync_checker rd_chk;
 
     public:
-      sc_in <bool> vld;
-      sc_out <bool> rdy;
+      sc_in <bool> _VLDNAME_;
+      sc_out <bool> _RDYNAME_;
       static const unsigned int width=0;
 
       in(sc_module_name name = sc_gen_unique_name("conn_sync_in"))
         : rd_chk(name, "call reset_sync_in()", "synchronize from this port")
-        , vld( CONNECTIONS_CONCAT(name,"vld") )
-        , rdy( CONNECTIONS_CONCAT(name,"rdy") )
+        , _VLDNAME_( CONNECTIONS_CONCAT(name,_VLDNAMESTR_) )
+        , _RDYNAME_( CONNECTIONS_CONCAT(name,_RDYNAMESTR_) )
       {}
 
       void reset_sync_in() {
-        rdy.write(false);
+        _RDYNAME_.write(false);
         rd_chk.ok();
       }
 
@@ -179,10 +179,10 @@ namespace Connections
       #pragma design modulario<sync>
       bool nb_sync_in() {
         rd_chk.test();
-        rdy.write(true);
+        _RDYNAME_.write(true);
         wait();
-        rdy.write(false);
-        return vld.read();
+        _RDYNAME_.write(false);
+        return _VLDNAME_.read();
       }
 
       #pragma builtin_modulario
@@ -191,16 +191,16 @@ namespace Connections
       void sync_in(T &...t) {
         rd_chk.test();
         do {
-          rdy.write(true);
+          _RDYNAME_.write(true);
           wait();
-        } while (vld.read() != true );
-        rdy.write(false);
+        } while (_VLDNAME_.read() != true );
+        _RDYNAME_.write(false);
       }
 
       template <class C>
       void bind (C &c) {
-        vld(c.vld);
-        rdy(c.rdy);
+        _VLDNAME_(c._VLDNAME_);
+        _RDYNAME_(c._RDYNAME_);
       }
 
       template <class C>
@@ -214,18 +214,18 @@ namespace Connections
       sync_checker wr_chk;
 
     public:
-      sc_out <bool> vld;
-      sc_in <bool> rdy;
+      sc_out <bool> _VLDNAME_;
+      sc_in <bool> _RDYNAME_;
       static const unsigned int width=0;
 
       out(sc_module_name name = sc_gen_unique_name("conn_sync_out"))
         : wr_chk(name, "call reset_sync_out()", "synchronize to this port")
-        , vld( CONNECTIONS_CONCAT(name,"vld") )
-        , rdy( CONNECTIONS_CONCAT(name,"rdy") )
+        , _VLDNAME_( CONNECTIONS_CONCAT(name,_VLDNAMESTR_) )
+        , _RDYNAME_( CONNECTIONS_CONCAT(name,_RDYNAMESTR_) )
       {}
 
       void reset_sync_out() {
-        vld.write(false);
+        _VLDNAME_.write(false);
         wr_chk.ok();
       }
 
@@ -235,16 +235,16 @@ namespace Connections
       void sync_out(T &...t) {
         wr_chk.test();
         do {
-          vld.write(true);
+          _VLDNAME_.write(true);
           wait();
-        } while (rdy.read() != true );
-        vld.write(false);
+        } while (_RDYNAME_.read() != true );
+        _VLDNAME_.write(false);
       }
 
       template <class C>
       void bind (C &c) {
-        vld(c.vld);
-        rdy(c.rdy);
+        _VLDNAME_(c._VLDNAME_);
+        _RDYNAME_(c._RDYNAME_);
       }
 
       template <typename C>
@@ -263,15 +263,15 @@ namespace Connections
     {
       sync_checker wr_chk;
     public:
-      sc_signal<bool> vld;
+      sc_signal<bool> _VLDNAME_;
 
       chan(sc_module_name name = sc_gen_unique_name("conn_event_chan"))
         : wr_chk(name, "call reset_notify()", "send an event notification on this channel" )
-        , vld( ccs_concat(name,"vld") )
+        , _VLDNAME_( ccs_concat(name,_VLDNAMESTR_) )
         {}
 
       void reset_notify() {
-        vld.write(false);
+        _VLDNAME_.write(false);
         wr_chk.ok();
       }
       void reset_wait_for() {}
@@ -280,31 +280,31 @@ namespace Connections
       void wait_for() {
         do {
           wait();
-        } while (vld.read() != true );
+        } while (_VLDNAME_.read() != true );
       }
 
       #pragma design modulario<sync>
       bool nb_valid() {
         wait();
-        return vld.read();
+        return _VLDNAME_.read();
       }
 
       #pragma design modulario<sync>
       void nb_notify () {
         wr_chk.test();
-        vld.write(true);
+        _VLDNAME_.write(true);
         wait();
-        vld.write(false);
+        _VLDNAME_.write(false);
       }
     }; //chan
 
     class in
     {
     public:
-      sc_in<bool> vld;
+      sc_in<bool> _VLDNAME_;
 
       in(sc_module_name name = sc_gen_unique_name("conn_event_in")) :
-        vld( ccs_concat(name,"vld") ) {}
+        _VLDNAME_( ccs_concat(name,_VLDNAMESTR_) ) {}
 
       void reset_wait_for() {}
 
@@ -312,18 +312,18 @@ namespace Connections
       void wait_for() {
         do {
           wait();
-        } while (vld.read() != true );
+        } while (_VLDNAME_.read() != true );
       }
 
       #pragma design modulario<sync>
       bool nb_valid() {
         wait();
-        return vld.read();
+        return _VLDNAME_.read();
       }
 
       template <class C>
       void bind (C &c) {
-        vld(c.vld);
+        _VLDNAME_(c._VLDNAME_);
       }
 
       template <class C>
@@ -337,29 +337,29 @@ namespace Connections
       sync_checker wr_chk;
 
     public:
-      sc_out<bool> vld;
+      sc_out<bool> _VLDNAME_;
 
       out(sc_module_name name = sc_gen_unique_name("conn_event_out"))
         : wr_chk(name, "call reset_notify()", "send an event notification on this port" )
-        , vld( ccs_concat(name,"vld") )
+        , _VLDNAME_( ccs_concat(name,_VLDNAMESTR_) )
         {}
 
       void reset_notify() {
-        vld.write(false);
+        _VLDNAME_.write(false);
         wr_chk.ok();
       }
 
       #pragma design modulario<sync>
       void nb_notify () {
         wr_chk.test();
-        vld.write(true);
+        _VLDNAME_.write(true);
         wait();
-        vld.write(false);
+        _VLDNAME_.write(false);
       }
 
       template <class C>
       void bind (C &c) {
-        vld(c.vld);
+        _VLDNAME_(c._VLDNAME_);
       }
 
       template <class C>
@@ -396,8 +396,8 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
     inline friend void sc_trace(sc_trace_file *tf, const SyncOut &v, const std::string &NAME ) {
-      sc_trace(tf,v.rdy, NAME + ".rdy");
-      sc_trace(tf,v.vld, NAME + ".vld");
+      sc_trace(tf,v.rdy, NAME + "." + _RDYNAMESTR_);
+      sc_trace(tf,v._VLDNAME_, NAME + "." + _VLDNAMESTR_);
     }
     std::string name() {
       std::string theName;
@@ -439,8 +439,8 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
     inline friend void sc_trace(sc_trace_file *tf, const SyncIn &v, const std::string &NAME ) {
-      sc_trace(tf,v.rdy, NAME + ".rdy");
-      sc_trace(tf,v.vld, NAME + ".vld");
+      sc_trace(tf,v.rdy, NAME + "." + _RDYNAMESTR_);
+      sc_trace(tf,v._VLDNAME_, NAME + "." + _VLDNAMESTR_);
     }
     std::string name() {
       std::string theName;
@@ -492,8 +492,8 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
     inline friend void sc_trace(sc_trace_file *tf, const SyncChannel &v, const std::string &NAME ) {
-      sc_trace(tf,v.rdy, NAME + ".rdy");
-      sc_trace(tf,v.vld, NAME + ".vld");
+      sc_trace(tf,v.rdy, NAME + "." + _RDYNAMESTR_);
+      sc_trace(tf,v._VLDNAME_, NAME + "." + _VLDNAMESTR_);
     }
     std::string name() {
       std::string theName;
@@ -508,7 +508,7 @@ namespace Connections
     virtual void set_trace(sc_trace_file* fp)
     {
       sc_trace(fp, this->rdy, this->rdy.name());
-      sc_trace(fp, this->vld, this->vld.name());
+      sc_trace(fp, this->_VLDNAME_, this->_VLDNAME_.name());
     }
 
     virtual bool set_log(std::ofstream* os, int& log_num, std::string& path_name) { return false; }
@@ -539,7 +539,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
     inline friend void sc_trace(sc_trace_file *tf, const EventOut &v, const std::string &NAME ) {
-      sc_trace(tf,v.vld, NAME + ".vld");
+      sc_trace(tf,v._VLDNAME_, NAME + "." + _VLDNAMESTR_);
     }
     std::string name() {
       std::string theName;
@@ -578,7 +578,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
     inline friend void sc_trace(sc_trace_file *tf, const EventIn &v, const std::string &NAME ) {
-      sc_trace(tf,v.vld, NAME + ".vld");
+      sc_trace(tf,v._VLDNAME_, NAME + "." + _VLDNAMESTR_);
     }
     std::string name() {
       std::string theName;
@@ -624,7 +624,7 @@ namespace Connections
 
 #ifdef CONNECTIONS_SIM_ONLY
     inline friend void sc_trace(sc_trace_file *tf, const EventChannel &v, const std::string &NAME ) {
-      sc_trace(tf,v.vld, NAME + ".vld");
+      sc_trace(tf,v._VLDNAME_, NAME + "." + _VLDNAMESTR_);
     }
     std::string name() {
       std::string theName;
@@ -638,7 +638,7 @@ namespace Connections
 
     virtual void set_trace(sc_trace_file* fp)
     {
-      sc_trace(fp, this->vld, this->vld.name());
+      sc_trace(fp, this->_VLDNAME_, this->_VLDNAME_.name());
     }
 
     virtual bool set_log(std::ofstream* os, int& log_num, std::string& path_name) { return false; }
